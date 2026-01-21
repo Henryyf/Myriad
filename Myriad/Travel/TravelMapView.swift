@@ -394,6 +394,8 @@ struct GeoJSONMapView: UIViewRepresentable {
                 let geoJSON = try MKGeoJSONDecoder().decode(data)
                 var polygonCount = 0
                 var countryCodeCount = 0
+                var polygonWithCodeCount = 0
+                var polygonWithoutCodeCount = 0
                 
                 for item in geoJSON {
                     if let feature = item as? MKGeoJSONFeature {
@@ -415,9 +417,11 @@ struct GeoJSONMapView: UIViewRepresentable {
                                 // 如果有国家代码，统一转换为大写存储；如果没有，存储空字符串
                                 if let code = countryCode {
                                     polygonToCountryCode[polygon] = code.uppercased()  // 统一转换为大写
+                                    polygonWithCodeCount += 1
                                 } else {
                                     // 没有国家代码的国家也存储，但值为空字符串
                                     polygonToCountryCode[polygon] = ""
+                                    polygonWithoutCodeCount += 1
                                 }
                                 mapView.addOverlay(polygon)
                                 polygonCount += 1
@@ -425,7 +429,10 @@ struct GeoJSONMapView: UIViewRepresentable {
                         }
                     }
                 }
-                print("✅ 成功加载 geoJSON: \(polygonCount) 个多边形, \(countryCodeCount) 个国家有代码")
+                print("✅ 成功加载 geoJSON: \(polygonCount) 个多边形")
+                print("   有国家代码的多边形: \(polygonWithCodeCount) 个")
+                print("   没有国家代码的多边形: \(polygonWithoutCodeCount) 个")
+                print("   国家代码种类: \(countryCodeCount) 个")
                 print("   访问过的国家: \(visitedCodes)")
             } catch {
                 print("❌ 解析 geoJSON 失败: \(error)")
@@ -499,6 +506,12 @@ struct GeoJSONMapView: UIViewRepresentable {
                     }
                 } else {
                     // 没有国家代码，显示为浅灰色覆盖（未访问状态）
+                    renderCount += 1
+                    if renderCount <= 30 {  // 打印前30个没有代码的多边形
+                        let hasEntry = polygonToCountryCode[polygon] != nil
+                        let codeValue = polygonToCountryCode[polygon] ?? "nil"
+                        print("⚪ 渲染无代码多边形: 字典中有条目=\(hasEntry), 值='\(codeValue)'")
+                    }
                     renderer.fillColor = UIColor(white: 0.85, alpha: 1.0)
                     renderer.strokeColor = UIColor(white: 0.5, alpha: 1.0)
                     renderer.lineWidth = 1.0
