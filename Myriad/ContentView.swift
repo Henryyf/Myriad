@@ -53,7 +53,7 @@ struct ContentView: View {
                 case .list:
                     TravelListView(store: travelStore)
                 case .map:
-                    TravelMapView()
+                    TravelMapView(store: travelStore)
                 case .detail(let id):
                     if let trip = travelStore.trips.first(where: { $0.id == id }) {
                         TravelDetailView(store: travelStore, trip: trip)
