@@ -485,24 +485,26 @@ struct GeoJSONMapView: UIViewRepresentable {
                     // 有国家代码，检查是否访问过（countryCode 已经是大写）
                     let isVisited = parent.visitedCountryCodes.contains(countryCode)
                     
-                    // 调试：记录所有被渲染的国家（只打印前20个和访问过的）
+                    // 调试：记录所有被渲染的国家（打印访问过的和部分未访问的）
                     renderCount += 1
-                    if isVisited || renderCount <= 20 {
-                        print("🎨 渲染国家: \(countryCode), 访问过: \(isVisited), 访问列表: \(parent.visitedCountryCodes)")
-                    }
                     
                     if isVisited {
                         // 访问过的国家：蓝色填充和边框（明显可见）
-                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.6)
+                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.7)
                         renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
-                        renderer.lineWidth = 2.0
+                        renderer.lineWidth = 2.5
                         print("🔵 访问过的国家: \(countryCode) - 蓝色")
                     } else {
-                        // 未访问过的国家：使用完全不透明的浅灰色覆盖默认地图颜色
-                        // 使用完全不透明确保能够完全覆盖默认地图的彩色
-                        renderer.fillColor = UIColor(white: 0.85, alpha: 1.0)  // 浅灰色，完全不透明
-                        renderer.strokeColor = UIColor(white: 0.5, alpha: 1.0)  // 中等灰色边框，完全不透明
-                        renderer.lineWidth = 1.0
+                        // 未访问过的国家：使用深灰色完全不透明覆盖默认地图颜色
+                        // 使用深灰色确保能够完全覆盖默认地图的彩色，实现黑白效果
+                        renderer.fillColor = UIColor(white: 0.75, alpha: 1.0)  // 深灰色，完全不透明
+                        renderer.strokeColor = UIColor(white: 0.4, alpha: 1.0)  // 深灰色边框，完全不透明
+                        renderer.lineWidth = 1.2
+                        
+                        // 只打印前10个未访问的国家作为示例
+                        if renderCount <= 10 {
+                            print("⚫ 未访问的国家: \(countryCode) - 深灰色")
+                        }
                     }
                 } else {
                     // 没有国家代码，显示为浅灰色覆盖（未访问状态）
