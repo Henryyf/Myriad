@@ -314,14 +314,17 @@ struct GeoJSONMapView: UIViewRepresentable {
         context.coordinator.updateOverlayColors(mapView: mapView, visitedCodes: visitedCountryCodes)
         
         // 更新相机位置
-        switch cameraPosition {
-        case .region(let region):
-            if mapView.region.center.latitude != region.center.latitude || 
-               mapView.region.center.longitude != region.center.longitude {
-                mapView.setRegion(region, animated: true)
+        // 检查是否有新的 region 需要设置
+        if let targetRegion = context.coordinator.getRegion(from: cameraPosition) {
+            // 如果有目标 region，更新地图区域
+            if context.coordinator.lastRegion == nil || 
+               abs(mapView.region.center.latitude - targetRegion.center.latitude) > 0.001 || 
+               abs(mapView.region.center.longitude - targetRegion.center.longitude) > 0.001 {
+                mapView.setRegion(targetRegion, animated: true)
+                context.coordinator.lastRegion = targetRegion
             }
-        case .automatic:
-            // 自动调整到显示所有国家
+        } else {
+            // 如果是 automatic 类型，自动调整到显示所有国家
             if !countries.isEmpty {
                 let coordinates = countries.map { $0.coordinate }
                 let latitudes = coordinates.map { $0.latitude }
@@ -354,9 +357,29 @@ struct GeoJSONMapView: UIViewRepresentable {
         var parent: GeoJSONMapView
         var polygonToCountryCode: [MKPolygon: String] = [:]
         var annotations: [String: MKPointAnnotation] = [:]
+        var lastRegion: MKCoordinateRegion?
         
         init(_ parent: GeoJSONMapView) {
             self.parent = parent
+        }
+        
+        // 从 MapCameraPosition 中提取 MKCoordinateRegion
+        func getRegion(from position: MapCameraPosition) -> MKCoordinateRegion? {
+            // 使用反射来检查 MapCameraPosition 的内部结构
+            let mirror = Mirror(reflecting: position)
+            for child in mirror.children {
+                if let region = child.value as? MKCoordinateRegion {
+                    return region
+                }
+                // 如果子值也是结构体，递归检查
+                let childMirror = Mirror(reflecting: child.value)
+                for grandChild in childMirror.children {
+                    if let region = grandChild.value as? MKCoordinateRegion {
+                        return region
+                    }
+                }
+            }
+            return nil
         }
         
         func loadGeoJSON(mapView: MKMapView, visitedCodes: Set<String>) {
