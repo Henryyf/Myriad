@@ -391,10 +391,12 @@ struct GeoJSONMapView: UIViewRepresentable {
             
             do {
                 let geoJSON = try MKGeoJSONDecoder().decode(data)
+                var polygonCount = 0
+                var countryCodeCount = 0
                 
                 for item in geoJSON {
                     if let feature = item as? MKGeoJSONFeature {
-                        // 获取国家代码
+                        // 获取国家代码（可能为空）
                         var countryCode: String?
                         
                         // MKGeoJSONFeature.properties 是 Data? 类型，需要解码
@@ -402,20 +404,28 @@ struct GeoJSONMapView: UIViewRepresentable {
                             if let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any],
                                let isoA2 = jsonObject["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
                                 countryCode = isoA2
+                                countryCodeCount += 1
                             }
                         }
                         
-                        if let code = countryCode {
-                            // 为每个多边形创建覆盖层
-                            for geometry in feature.geometry {
-                                if let polygon = geometry as? MKPolygon {
+                        // 为每个多边形创建覆盖层（无论是否有国家代码都要渲染）
+                        for geometry in feature.geometry {
+                            if let polygon = geometry as? MKPolygon {
+                                // 如果有国家代码，存储它；如果没有，存储空字符串
+                                if let code = countryCode {
                                     polygonToCountryCode[polygon] = code
-                                    mapView.addOverlay(polygon)
+                                } else {
+                                    // 没有国家代码的国家也存储，但值为空字符串
+                                    polygonToCountryCode[polygon] = ""
                                 }
+                                mapView.addOverlay(polygon)
+                                polygonCount += 1
                             }
                         }
                     }
                 }
+                print("✅ 成功加载 geoJSON: \(polygonCount) 个多边形, \(countryCodeCount) 个国家有代码")
+                print("   访问过的国家: \(visitedCodes)")
             } catch {
                 print("❌ 解析 geoJSON 失败: \(error)")
             }
@@ -454,7 +464,8 @@ struct GeoJSONMapView: UIViewRepresentable {
         }
         
         func updateOverlayColors(mapView: MKMapView, visitedCodes: Set<String>) {
-            // 颜色更新在 rendererFor 中处理
+            // 颜色更新在 rendererFor 中实时处理
+            // 当覆盖层需要重新渲染时，rendererFor 会自动被调用
         }
         
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -462,20 +473,29 @@ struct GeoJSONMapView: UIViewRepresentable {
                 let renderer = MKPolygonRenderer(polygon: polygon)
                 
                 // 根据国家代码判断是否访问过
-                if let countryCode = polygonToCountryCode[polygon] {
-                    let isVisited = parent.visitedCountryCodes.contains(countryCode)
-                    renderer.fillColor = isVisited 
-                        ? UIColor.systemBlue.withAlphaComponent(0.3)
-                        : UIColor.gray.withAlphaComponent(0.1)
-                    renderer.strokeColor = isVisited
-                        ? UIColor.systemBlue.withAlphaComponent(0.5)
-                        : UIColor.gray.withAlphaComponent(0.3)
+                if let countryCode = polygonToCountryCode[polygon], !countryCode.isEmpty {
+                    // 有国家代码，检查是否访问过（忽略大小写）
+                    let upperCode = countryCode.uppercased()
+                    let isVisited = parent.visitedCountryCodes.contains { $0.uppercased() == upperCode }
+                    
+                    if isVisited {
+                        // 访问过的国家：蓝色填充和边框
+                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.4)
+                        renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.7)
+                        renderer.lineWidth = 1.0
+                    } else {
+                        // 未访问过的国家：灰色填充和边框（黑白效果）
+                        renderer.fillColor = UIColor.gray.withAlphaComponent(0.15)
+                        renderer.strokeColor = UIColor.gray.withAlphaComponent(0.4)
+                        renderer.lineWidth = 0.5
+                    }
                 } else {
-                    renderer.fillColor = UIColor.gray.withAlphaComponent(0.1)
-                    renderer.strokeColor = UIColor.gray.withAlphaComponent(0.3)
+                    // 没有国家代码，显示为灰色（未访问状态）
+                    renderer.fillColor = UIColor.gray.withAlphaComponent(0.15)
+                    renderer.strokeColor = UIColor.gray.withAlphaComponent(0.4)
+                    renderer.lineWidth = 0.5
                 }
                 
-                renderer.lineWidth = 0.5
                 return renderer
             }
             return MKOverlayRenderer(overlay: overlay)
