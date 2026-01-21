@@ -127,8 +127,12 @@ struct TravelMapView: View {
         .onChange(of: selectedStatus) { oldValue, newValue in
             // 切换筛选时清除选中
             selectedCountry = nil
-            // 重置相机位置
-            cameraPosition = .automatic
+            // 根据当前筛选的国家调整视角
+            updateCameraPosition()
+        }
+        .onAppear {
+            // 首次加载时设置视角
+            updateCameraPosition()
         }
     }
     
@@ -231,6 +235,46 @@ struct TravelMapView: View {
     }
     
     // MARK: - Helpers
+    
+    private func updateCameraPosition() {
+        let countries = countryFootprints
+        
+        guard !countries.isEmpty else {
+            // 如果没有国家，显示全球视图
+            cameraPosition = .region(
+                MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 20, longitude: 0),
+                    span: MKCoordinateSpan(latitudeDelta: 100, longitudeDelta: 150)
+                )
+            )
+            return
+        }
+        
+        // 计算所有国家的边界
+        let coordinates = countries.map { $0.coordinate }
+        let latitudes = coordinates.map { $0.latitude }
+        let longitudes = coordinates.map { $0.longitude }
+        
+        let minLat = latitudes.min()!
+        let maxLat = latitudes.max()!
+        let minLon = longitudes.min()!
+        let maxLon = longitudes.max()!
+        
+        // 计算中心点
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        
+        // 计算跨度，添加30%的边距使视图更宽松
+        let latDelta = max((maxLat - minLat) * 1.3, 20)  // 最小20度
+        let lonDelta = max((maxLon - minLon) * 1.3, 30)  // 最小30度
+        
+        cameraPosition = .region(
+            MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+                span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
+            )
+        )
+    }
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
