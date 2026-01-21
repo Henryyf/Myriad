@@ -423,8 +423,14 @@ struct GeoJSONMapView: UIViewRepresentable {
                             if let polygon = geometry as? MKPolygon {
                                 // 如果有国家代码，统一转换为大写存储；如果没有，存储空字符串
                                 if let code = countryCode {
-                                    polygonToCountryCode[polygon] = code.uppercased()  // 统一转换为大写
+                                    let upperCode = code.uppercased()
+                                    polygonToCountryCode[polygon] = upperCode  // 统一转换为大写
                                     polygonWithCodeCount += 1
+                                    
+                                    // 特别追踪中国、俄罗斯、澳大利亚的多边形
+                                    if ["CN", "RU", "AU"].contains(upperCode) {
+                                        print("📍 加载多边形: 国家=\(upperCode), 总数=\(polygonCount + 1)")
+                                    }
                                 } else {
                                     // 没有国家代码的国家也存储，但值为空字符串
                                     polygonToCountryCode[polygon] = ""
@@ -487,17 +493,20 @@ struct GeoJSONMapView: UIViewRepresentable {
             if let polygon = overlay as? MKPolygon {
                 let renderer = MKPolygonRenderer(polygon: polygon)
                 
+                // 检查多边形是否在字典中
+                let countryCode = polygonToCountryCode[polygon]
+                
                 // 根据国家代码判断是否访问过
-                if let countryCode = polygonToCountryCode[polygon], !countryCode.isEmpty {
+                if let code = countryCode, !code.isEmpty {
                     // 有国家代码，检查是否访问过（countryCode 已经是大写）
-                    let isVisited = parent.visitedCountryCodes.contains(countryCode)
+                    let isVisited = parent.visitedCountryCodes.contains(code)
                     
                     // 调试：记录所有被渲染的国家（打印访问过的和部分未访问的）
                     renderCount += 1
                     
                     // 特别检查中国、俄罗斯、澳大利亚
-                    if ["CN", "RU", "AU"].contains(countryCode) {
-                        print("🔍 检查关键国家: \(countryCode), isVisited=\(isVisited), 访问列表=\(parent.visitedCountryCodes)")
+                    if ["CN", "RU", "AU"].contains(code) {
+                        print("🔍 渲染关键国家: \(code), isVisited=\(isVisited), 访问列表=\(parent.visitedCountryCodes)")
                     }
                     
                     if isVisited {
@@ -505,7 +514,7 @@ struct GeoJSONMapView: UIViewRepresentable {
                         renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.7)
                         renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
                         renderer.lineWidth = 2.5
-                        print("🔵 访问过的国家: \(countryCode) - 蓝色")
+                        print("🔵 访问过的国家: \(code) - 蓝色")
                     } else {
                         // 未访问过的国家：使用深灰色完全不透明覆盖默认地图颜色
                         // 使用深灰色确保能够完全覆盖默认地图的彩色，实现黑白效果
@@ -515,7 +524,7 @@ struct GeoJSONMapView: UIViewRepresentable {
                         
                         // 只打印前10个未访问的国家作为示例
                         if renderCount <= 10 {
-                            print("⚫ 未访问的国家: \(countryCode) - 深灰色")
+                            print("⚫ 未访问的国家: \(code) - 深灰色")
                         }
                     }
                 } else {
