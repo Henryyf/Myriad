@@ -404,10 +404,17 @@ struct GeoJSONMapView: UIViewRepresentable {
                         
                         // MKGeoJSONFeature.properties 是 Data? 类型，需要解码
                         if let propertiesData = feature.properties {
-                            if let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any],
-                               let isoA2 = jsonObject["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
-                                countryCode = isoA2
-                                countryCodeCount += 1
+                            if let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any] {
+                                // 尝试获取 ISO_A2
+                                if let isoA2 = jsonObject["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
+                                    countryCode = isoA2
+                                    countryCodeCount += 1
+                                    
+                                    // 特别检查中国、俄罗斯、澳大利亚
+                                    if ["CN", "RU", "AU", "CHN", "RUS", "AUS"].contains(isoA2.uppercased()) {
+                                        print("📍 发现关键国家: ISO_A2=\(isoA2), 访问列表: \(visitedCodes)")
+                                    }
+                                }
                             }
                         }
                         
@@ -487,6 +494,11 @@ struct GeoJSONMapView: UIViewRepresentable {
                     
                     // 调试：记录所有被渲染的国家（打印访问过的和部分未访问的）
                     renderCount += 1
+                    
+                    // 特别检查中国、俄罗斯、澳大利亚
+                    if ["CN", "RU", "AU"].contains(countryCode) {
+                        print("🔍 检查关键国家: \(countryCode), isVisited=\(isVisited), 访问列表=\(parent.visitedCountryCodes)")
+                    }
                     
                     if isVisited {
                         // 访问过的国家：蓝色填充和边框（明显可见）
