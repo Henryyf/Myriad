@@ -237,14 +237,9 @@ struct TravelMapView: View {
     // MARK: - Helpers
     
     private func updateCameraPosition() {
-        // "全部"筛选器使用固定的全球视图
+        // "全部"筛选器使用自动调整
         if selectedStatus == .all {
-            cameraPosition = .region(
-                MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: 20, longitude: 0),
-                    span: MKCoordinateSpan(latitudeDelta: 120, longitudeDelta: 180)
-                )
-            )
+            cameraPosition = .automatic
             return
         }
         
