@@ -27,8 +27,7 @@ final class TravelStore {
         title: String,
         startDate: Date,
         endDate: Date? = nil,
-        status: TripStatus = .planned,
-        heroBackgroundAssetName: String? = nil,
+        heroImageData: Data? = nil,
         firstMemoryText: String = ""
     ) {
         let memoryText = firstMemoryText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,16 +37,24 @@ final class TravelStore {
             title: title,
             startDate: startDate,
             endDate: endDate,
-            status: status,
-            heroBackgroundAssetName: heroBackgroundAssetName,
+            heroImageData: heroImageData,
             memories: memories
         )
         trips.insert(newTrip, at: 0)
     }
-
-    func updateStatus(tripID: UUID, to newStatus: TripStatus) {
+    
+    func updateTrip(
+        tripID: UUID,
+        title: String,
+        startDate: Date,
+        endDate: Date?,
+        heroImageData: Data?
+    ) {
         guard let idx = trips.firstIndex(where: { $0.id == tripID }) else { return }
-        trips[idx].status = newStatus
+        trips[idx].title = title
+        trips[idx].startDate = startDate
+        trips[idx].endDate = endDate
+        trips[idx].heroImageData = heroImageData
     }
 
     func addMemory(tripID: UUID, text: String) {
@@ -65,24 +72,21 @@ final class TravelStore {
                 title: "Tokyo",
                 startDate: Date().addingTimeInterval(-86400 * 12),
                 endDate: Date().addingTimeInterval(-86400 * 7),
-                status: .completed,
-                heroBackgroundAssetName: nil,
+                heroImageData: nil,
                 memories: [MemoryItem(text: "第一次在浅草看见晚霞，真的很安静。")]
             ),
             Trip(
                 title: "Osaka",
                 startDate: Date().addingTimeInterval(-86400 * 2),
                 endDate: nil,
-                status: .traveling,
-                heroBackgroundAssetName: nil,
+                heroImageData: nil,
                 memories: [MemoryItem(text: "今天走了很多路，但吃到一家很棒的拉面。")]
             ),
             Trip(
                 title: "Vancouver",
                 startDate: Date().addingTimeInterval(86400 * 20),
                 endDate: Date().addingTimeInterval(86400 * 26),
-                status: .planned,
-                heroBackgroundAssetName: nil,
+                heroImageData: nil,
                 memories: []
             )
         ]

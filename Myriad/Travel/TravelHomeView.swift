@@ -53,20 +53,6 @@ struct TravelHomeView: View {
             }
             .navigationTitle("旅行")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: TravelRoute.self) { route in
-                switch route {
-                case .list:
-                    TravelListView(store: store)
-                case .map:
-                    TravelMapView()
-                case .detail(let id):
-                    if let trip = store.trips.first(where: { $0.id == id }) {
-                        TravelDetailView(store: store, trip: trip)
-                    } else {
-                        MissingTripView()
-                    }
-                }
-            }
             .sheet(isPresented: $showingNewTripSheet) {
                 NewTripSheet(store: store)
             }

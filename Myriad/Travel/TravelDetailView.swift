@@ -12,10 +12,8 @@ struct TravelDetailView: View {
     var store: TravelStore
     let trip: Trip
 
-    @Environment(\.dismiss) private var dismiss
-
     @State private var newMemoryText: String = ""
-    @State private var showingStatusMenu: Bool = false
+    @State private var showingEditSheet = false
 
     // 关键：Detail 里不要直接使用传入的 trip 作为“真数据”
     // 因为 trip 是值类型，更新状态后它不会自动变化。
@@ -42,25 +40,21 @@ struct TravelDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("状态", selection: Binding(
-                        get: { currentTrip.status },
-                        set: { store.updateStatus(tripID: currentTrip.id, to: $0) }
-                    )) {
-                        ForEach(TripStatus.allCases, id: \.self) { s in
-                            Text(s.title).tag(s)
-                        }
-                    }
-
-                } label: {
-                    HStack(spacing: 6) {
-                        TripStatusTag(status: currentTrip.status)
-                        Image(systemName: "chevron.down")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                HStack(spacing: 12) {
+                    TripStatusTag(status: currentTrip.status)
+                    
+                    Button {
+                        showingEditSheet = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.body)
+                            .foregroundStyle(.primary)
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            EditTripSheet(store: store, trip: currentTrip)
         }
     }
 
@@ -84,9 +78,9 @@ struct TravelDetailView: View {
                         )
                 }
                 .overlay {
-                    if let name = currentTrip.heroBackgroundAssetName,
-                       let ui = UIImage(named: name) {
-                        Image(uiImage: ui)
+                    if let imageData = currentTrip.heroImageData,
+                       let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
                             .resizable()
                             .scaledToFill()
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

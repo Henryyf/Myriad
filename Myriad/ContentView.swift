@@ -27,9 +27,7 @@ struct ContentView: View {
                         HeaderView()
 
                         LazyVGrid(columns: columns, spacing: 22) {
-                            NavigationLink {
-                                TravelHomeView(store: travelStore)
-                            } label: {
+                            NavigationLink(value: "travel") {
                                 AppIconTile(
                                     title: "旅行",
                                     iconName: "icon_travel"
@@ -45,6 +43,25 @@ struct ContentView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: String.self) { destination in
+                if destination == "travel" {
+                    TravelHomeView(store: travelStore)
+                }
+            }
+            .navigationDestination(for: TravelRoute.self) { route in
+                switch route {
+                case .list:
+                    TravelListView(store: travelStore)
+                case .map:
+                    TravelMapView()
+                case .detail(let id):
+                    if let trip = travelStore.trips.first(where: { $0.id == id }) {
+                        TravelDetailView(store: travelStore, trip: trip)
+                    } else {
+                        MissingTripView()
+                    }
+                }
+            }
         }
     }
 }

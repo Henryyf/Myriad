@@ -1,5 +1,5 @@
 //
-//  NewTripSheet.swift
+//  EditTripSheet.swift
 //  Myriad
 //
 //  Created by 洪嘉禺 on 1/19/26.
@@ -8,19 +8,33 @@
 import SwiftUI
 import PhotosUI
 
-struct NewTripSheet: View {
-
+struct EditTripSheet: View {
+    
     var store: TravelStore
+    let trip: Trip
     @Environment(\.dismiss) private var dismiss
-
-    @State private var title: String = ""
-    @State private var startDate: Date = Date()
-    @State private var endDateEnabled: Bool = false
-    @State private var endDate: Date = Date()
-    @State private var firstMemoryText: String = ""
+    
+    @State private var title: String
+    @State private var startDate: Date
+    @State private var endDateEnabled: Bool
+    @State private var endDate: Date
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var heroImage: UIImage?
-
+    
+    init(store: TravelStore, trip: Trip) {
+        self.store = store
+        self.trip = trip
+        
+        _title = State(initialValue: trip.title)
+        _startDate = State(initialValue: trip.startDate)
+        _endDateEnabled = State(initialValue: trip.endDate != nil)
+        _endDate = State(initialValue: trip.endDate ?? Date())
+        
+        if let imageData = trip.heroImageData, let image = UIImage(data: imageData) {
+            _heroImage = State(initialValue: image)
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -28,7 +42,7 @@ struct NewTripSheet: View {
                     TextField("标题（例如 Tokyo）", text: $title)
                 }
                 
-                Section("照片（可选）") {
+                Section("照片") {
                     VStack(spacing: 12) {
                         if let image = heroImage {
                             Image(uiImage: image)
@@ -59,33 +73,28 @@ struct NewTripSheet: View {
                         }
                     }
                 }
-
+                
                 Section("日期") {
                     DatePicker("开始日期", selection: $startDate, displayedComponents: [.date])
-
+                    
                     Toggle("设置结束日期", isOn: $endDateEnabled)
-
+                    
                     if endDateEnabled {
                         DatePicker("结束日期", selection: $endDate, displayedComponents: [.date])
                     }
                 }
-
-                Section("第一条记忆（可选）") {
-                    TextField("写下一句话…", text: $firstMemoryText, axis: .vertical)
-                        .lineLimit(2...6)
-                }
-
+                
                 Section {
                     Button {
-                        create()
+                        save()
                     } label: {
-                        Text("创建")
+                        Text("保存")
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle("新增旅行")
+            .navigationTitle("编辑旅行")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -102,19 +111,19 @@ struct NewTripSheet: View {
             }
         }
     }
-
-    private func create() {
+    
+    private func save() {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
         
         let imageData = heroImage?.jpegData(compressionQuality: 0.8)
-
-        store.addTrip(
+        
+        store.updateTrip(
+            tripID: trip.id,
             title: trimmedTitle,
             startDate: startDate,
             endDate: endDateEnabled ? endDate : nil,
-            heroImageData: imageData,
-            firstMemoryText: firstMemoryText
+            heroImageData: imageData
         )
         dismiss()
     }

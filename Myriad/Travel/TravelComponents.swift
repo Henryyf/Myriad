@@ -46,9 +46,19 @@ struct TripCardRow: View {
                 .fill(Color.black.opacity(0.04))
                 .frame(width: 56, height: 56)
                 .overlay {
-                    Image(systemName: "photo")
-                        .foregroundStyle(.secondary)
+                    if let imageData = trip.heroImageData,
+                       let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else {
+                        Image(systemName: "photo")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .clipped()
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {

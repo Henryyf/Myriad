@@ -86,7 +86,7 @@ struct TravelListView: View {
 
     private func emptySubtitle(for status: TripStatus) -> String {
         switch status {
-        case .planned: return "点击右上角 + 新建一个旅行事件。"
+        case .planned: return "返回主页点击底部 + 按钮新建旅行事件。"
         case .traveling: return "把旅行状态切到“旅行中”，这里会显示。"
         case .completed: return "完成后切到“已完成”，这里会慢慢积累。"
         }
