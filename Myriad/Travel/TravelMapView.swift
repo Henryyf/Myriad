@@ -358,6 +358,7 @@ struct GeoJSONMapView: UIViewRepresentable {
         var polygonToCountryCode: [MKPolygon: String] = [:]
         var annotations: [String: MKPointAnnotation] = [:]
         var lastRegion: MKCoordinateRegion?
+        var renderCount = 0  // 用于调试计数
         
         init(_ parent: GeoJSONMapView) {
             self.parent = parent
@@ -478,7 +479,6 @@ struct GeoJSONMapView: UIViewRepresentable {
                     let isVisited = parent.visitedCountryCodes.contains(countryCode)
                     
                     // 调试：记录所有被渲染的国家（只打印前20个和访问过的）
-                    static var renderCount = 0
                     renderCount += 1
                     if isVisited || renderCount <= 20 {
                         print("🎨 渲染国家: \(countryCode), 访问过: \(isVisited), 访问列表: \(parent.visitedCountryCodes)")
