@@ -314,12 +314,13 @@ struct GeoJSONMapView: UIViewRepresentable {
         context.coordinator.updateOverlayColors(mapView: mapView, visitedCodes: visitedCountryCodes)
         
         // 更新相机位置
-        if case .region(let region) = cameraPosition {
+        switch cameraPosition {
+        case .region(let region):
             if mapView.region.center.latitude != region.center.latitude || 
                mapView.region.center.longitude != region.center.longitude {
                 mapView.setRegion(region, animated: true)
             }
-        } else if case .automatic = cameraPosition {
+        case .automatic:
             // 自动调整到显示所有国家
             if !countries.isEmpty {
                 let coordinates = countries.map { $0.coordinate }
@@ -373,10 +374,10 @@ struct GeoJSONMapView: UIViewRepresentable {
                         // 获取国家代码
                         var countryCode: String?
                         
-                        // MKGeoJSONFeature.properties 是 [String: Any]? 类型
-                        if let properties = feature.properties as? [String: Any] {
-                            // 尝试从属性中获取 ISO_A2
-                            if let isoA2 = properties["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
+                        // MKGeoJSONFeature.properties 是 Data? 类型，需要解码
+                        if let propertiesData = feature.properties {
+                            if let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any],
+                               let isoA2 = jsonObject["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
                                 countryCode = isoA2
                             }
                         }
