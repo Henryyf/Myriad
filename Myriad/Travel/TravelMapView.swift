@@ -293,11 +293,11 @@ struct GeoJSONMapView: UIViewRepresentable {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         
-        // 设置地图样式
+        // 使用标准地图配置，但我们会用覆盖层覆盖所有国家
         let configuration = MKStandardMapConfiguration(elevationStyle: .flat)
         mapView.preferredConfiguration = configuration
         
-        // 加载 geoJSON
+        // 加载 geoJSON（必须在设置配置之后）
         context.coordinator.loadGeoJSON(mapView: mapView, visitedCodes: visitedCountryCodes)
         
         // 添加国家标记
@@ -479,21 +479,26 @@ struct GeoJSONMapView: UIViewRepresentable {
                     let isVisited = parent.visitedCountryCodes.contains { $0.uppercased() == upperCode }
                     
                     if isVisited {
-                        // 访问过的国家：蓝色填充和边框
-                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.4)
-                        renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.7)
-                        renderer.lineWidth = 1.0
+                        // 访问过的国家：蓝色填充和边框（明显可见）
+                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.6)
+                        renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
+                        renderer.lineWidth = 2.0
+                        // 调试：打印访问过的国家
+                        if polygonToCountryCode.count < 10 {  // 只在开始时打印几次
+                            print("🎨 渲染访问过的国家: \(countryCode)")
+                        }
                     } else {
-                        // 未访问过的国家：灰色填充和边框（黑白效果）
-                        renderer.fillColor = UIColor.gray.withAlphaComponent(0.15)
-                        renderer.strokeColor = UIColor.gray.withAlphaComponent(0.4)
-                        renderer.lineWidth = 0.5
+                        // 未访问过的国家：使用几乎完全不透明的浅灰色覆盖默认地图颜色
+                        // 这样可以让未访问的国家看起来是黑白的
+                        renderer.fillColor = UIColor(white: 0.9, alpha: 0.95)  // 非常浅的灰色，几乎完全不透明
+                        renderer.strokeColor = UIColor(white: 0.5, alpha: 0.8)  // 中等灰色边框
+                        renderer.lineWidth = 1.2
                     }
                 } else {
-                    // 没有国家代码，显示为灰色（未访问状态）
-                    renderer.fillColor = UIColor.gray.withAlphaComponent(0.15)
-                    renderer.strokeColor = UIColor.gray.withAlphaComponent(0.4)
-                    renderer.lineWidth = 0.5
+                    // 没有国家代码，显示为浅灰色覆盖（未访问状态）
+                    renderer.fillColor = UIColor(white: 0.9, alpha: 0.95)
+                    renderer.strokeColor = UIColor(white: 0.5, alpha: 0.8)
+                    renderer.lineWidth = 1.2
                 }
                 
                 return renderer
