@@ -16,9 +16,9 @@ struct TravelMapView: View {
     @State private var selectedCountry: CountryFootprint?
     @State private var cameraPosition: MapCameraPosition = .automatic
     
-    // 获取所有去过的国家代码集合
+    // 获取所有去过的国家代码集合（统一转换为大写以便匹配）
     private var visitedCountryCodes: Set<String> {
-        Set(store.trips.compactMap { $0.countryCode })
+        Set(store.trips.compactMap { $0.countryCode?.uppercased() })
     }
     
     // 从 trips 聚合国家足迹（显示所有旅行，不筛选状态）
@@ -411,9 +411,9 @@ struct GeoJSONMapView: UIViewRepresentable {
                         // 为每个多边形创建覆盖层（无论是否有国家代码都要渲染）
                         for geometry in feature.geometry {
                             if let polygon = geometry as? MKPolygon {
-                                // 如果有国家代码，存储它；如果没有，存储空字符串
+                                // 如果有国家代码，统一转换为大写存储；如果没有，存储空字符串
                                 if let code = countryCode {
-                                    polygonToCountryCode[polygon] = code
+                                    polygonToCountryCode[polygon] = code.uppercased()  // 统一转换为大写
                                 } else {
                                     // 没有国家代码的国家也存储，但值为空字符串
                                     polygonToCountryCode[polygon] = ""
@@ -474,19 +474,21 @@ struct GeoJSONMapView: UIViewRepresentable {
                 
                 // 根据国家代码判断是否访问过
                 if let countryCode = polygonToCountryCode[polygon], !countryCode.isEmpty {
-                    // 有国家代码，检查是否访问过（忽略大小写）
-                    let upperCode = countryCode.uppercased()
-                    let isVisited = parent.visitedCountryCodes.contains { $0.uppercased() == upperCode }
+                    // 有国家代码，检查是否访问过（countryCode 已经是大写）
+                    let isVisited = parent.visitedCountryCodes.contains(countryCode)
+                    
+                    // 调试：记录所有被渲染的国家（只打印前20个和访问过的）
+                    static var renderCount = 0
+                    renderCount += 1
+                    if isVisited || renderCount <= 20 {
+                        print("🎨 渲染国家: \(countryCode), 访问过: \(isVisited), 访问列表: \(parent.visitedCountryCodes)")
+                    }
                     
                     if isVisited {
                         // 访问过的国家：蓝色填充和边框（明显可见）
                         renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.6)
                         renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
                         renderer.lineWidth = 2.0
-                        // 调试：打印访问过的国家
-                        if polygonToCountryCode.count < 10 {  // 只在开始时打印几次
-                            print("🎨 渲染访问过的国家: \(countryCode)")
-                        }
                     } else {
                         // 未访问过的国家：使用几乎完全不透明的浅灰色覆盖默认地图颜色
                         // 这样可以让未访问的国家看起来是黑白的
