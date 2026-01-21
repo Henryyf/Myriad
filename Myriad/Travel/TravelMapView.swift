@@ -373,7 +373,8 @@ struct GeoJSONMapView: UIViewRepresentable {
                         // 获取国家代码
                         var countryCode: String?
                         
-                        if let properties = feature.properties {
+                        // MKGeoJSONFeature.properties 是 [String: Any]? 类型
+                        if let properties = feature.properties as? [String: Any] {
                             // 尝试从属性中获取 ISO_A2
                             if let isoA2 = properties["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
                                 countryCode = isoA2
@@ -438,7 +439,7 @@ struct GeoJSONMapView: UIViewRepresentable {
                 
                 // 根据国家代码判断是否访问过
                 if let countryCode = polygonToCountryCode[polygon] {
-                    let isVisited = visitedCodes.contains(countryCode)
+                    let isVisited = parent.visitedCountryCodes.contains(countryCode)
                     renderer.fillColor = isVisited 
                         ? UIColor.systemBlue.withAlphaComponent(0.3)
                         : UIColor.gray.withAlphaComponent(0.1)
