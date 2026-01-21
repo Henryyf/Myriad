@@ -27,6 +27,7 @@ final class TravelStore {
         title: String,
         startDate: Date,
         endDate: Date? = nil,
+        countryCode: String? = nil,
         heroImageData: Data? = nil,
         firstMemoryText: String = ""
     ) {
@@ -37,6 +38,7 @@ final class TravelStore {
             title: title,
             startDate: startDate,
             endDate: endDate,
+            countryCode: countryCode,
             heroImageData: heroImageData,
             memories: memories
         )
@@ -48,12 +50,14 @@ final class TravelStore {
         title: String,
         startDate: Date,
         endDate: Date?,
+        countryCode: String?,
         heroImageData: Data?
     ) {
         guard let idx = trips.firstIndex(where: { $0.id == tripID }) else { return }
         trips[idx].title = title
         trips[idx].startDate = startDate
         trips[idx].endDate = endDate
+        trips[idx].countryCode = countryCode
         trips[idx].heroImageData = heroImageData
     }
 
@@ -72,6 +76,7 @@ final class TravelStore {
                 title: "Tokyo",
                 startDate: Date().addingTimeInterval(-86400 * 12),
                 endDate: Date().addingTimeInterval(-86400 * 7),
+                countryCode: "JP",
                 heroImageData: nil,
                 memories: [MemoryItem(text: "第一次在浅草看见晚霞，真的很安静。")]
             ),
@@ -79,6 +84,7 @@ final class TravelStore {
                 title: "Osaka",
                 startDate: Date().addingTimeInterval(-86400 * 2),
                 endDate: nil,
+                countryCode: "JP",
                 heroImageData: nil,
                 memories: [MemoryItem(text: "今天走了很多路，但吃到一家很棒的拉面。")]
             ),
@@ -86,6 +92,7 @@ final class TravelStore {
                 title: "Vancouver",
                 startDate: Date().addingTimeInterval(86400 * 20),
                 endDate: Date().addingTimeInterval(86400 * 26),
+                countryCode: "CA",
                 heroImageData: nil,
                 memories: []
             )

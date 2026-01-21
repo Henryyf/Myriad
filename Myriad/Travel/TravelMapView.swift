@@ -40,14 +40,15 @@ struct TravelMapView: View {
         
         // 按国家分组旅行
         for trip in store.trips {
-            guard let countryCode = CountryInfoProvider.inferCountryCode(from: trip.title),
-                  let _ = CountryInfoProvider.getInfo(for: countryCode) else {
+            // 只使用用户手动选择的国家代码
+            guard let code = trip.countryCode,
+                  let _ = CountryInfoProvider.getInfo(for: code) else {
                 continue
             }
             
             // 只包含符合当前筛选条件的旅行
             if selectedStatus.matches(trip.status) {
-                countryDict[countryCode, default: []].append(trip)
+                countryDict[code, default: []].append(trip)
             }
         }
         

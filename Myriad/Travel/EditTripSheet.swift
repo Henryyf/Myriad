@@ -18,8 +18,15 @@ struct EditTripSheet: View {
     @State private var startDate: Date
     @State private var endDateEnabled: Bool
     @State private var endDate: Date
+    @State private var selectedCountry: String?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var heroImage: UIImage?
+    
+    // 可选国家列表（按字母顺序）
+    private let availableCountries: [(code: String, name: String, flag: String)] = 
+        CountryInfoProvider.countries.values
+            .map { ($0.code, $0.name, $0.flagEmoji) }
+            .sorted { $0.name < $1.name }
     
     init(store: TravelStore, trip: Trip) {
         self.store = store
@@ -29,6 +36,7 @@ struct EditTripSheet: View {
         _startDate = State(initialValue: trip.startDate)
         _endDateEnabled = State(initialValue: trip.endDate != nil)
         _endDate = State(initialValue: trip.endDate ?? Date())
+        _selectedCountry = State(initialValue: trip.countryCode)
         
         if let imageData = trip.heroImageData, let image = UIImage(data: imageData) {
             _heroImage = State(initialValue: image)
@@ -40,6 +48,30 @@ struct EditTripSheet: View {
             Form {
                 Section("基本信息") {
                     TextField("标题（例如 Tokyo）", text: $title)
+                }
+                
+                Section("国家/地区") {
+                    Picker("选择国家", selection: $selectedCountry) {
+                        Text("未选择").tag(nil as String?)
+                        ForEach(availableCountries, id: \.code) { country in
+                            HStack {
+                                Text(country.flag)
+                                Text(country.name)
+                            }
+                            .tag(country.code as String?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    if selectedCountry != nil {
+                        Text("将在地图上显示")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("选择国家后将在地图显示")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 
                 Section("照片") {
@@ -123,6 +155,7 @@ struct EditTripSheet: View {
             title: trimmedTitle,
             startDate: startDate,
             endDate: endDateEnabled ? endDate : nil,
+            countryCode: selectedCountry,
             heroImageData: imageData
         )
         dismiss()

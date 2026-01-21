@@ -42,6 +42,9 @@ struct Trip: Identifiable, Codable, Hashable {
     var startDate: Date
     var endDate: Date?          // optional for ongoing or unknown end
     
+    // 地图支持
+    var countryCode: String?    // 国家代码（例如 "JP", "US"），用于地图显示
+    
     // v1.0 照片支持
     var heroImageData: Data?    // 主照片的图片数据
     var memories: [MemoryItem]  // at least one text block recommended
