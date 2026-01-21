@@ -489,18 +489,19 @@ struct GeoJSONMapView: UIViewRepresentable {
                         renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.6)
                         renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
                         renderer.lineWidth = 2.0
+                        print("🔵 访问过的国家: \(countryCode) - 蓝色")
                     } else {
-                        // 未访问过的国家：使用几乎完全不透明的浅灰色覆盖默认地图颜色
-                        // 这样可以让未访问的国家看起来是黑白的
-                        renderer.fillColor = UIColor(white: 0.9, alpha: 0.95)  // 非常浅的灰色，几乎完全不透明
-                        renderer.strokeColor = UIColor(white: 0.5, alpha: 0.8)  // 中等灰色边框
-                        renderer.lineWidth = 1.2
+                        // 未访问过的国家：使用完全不透明的浅灰色覆盖默认地图颜色
+                        // 使用完全不透明确保能够完全覆盖默认地图的彩色
+                        renderer.fillColor = UIColor(white: 0.85, alpha: 1.0)  // 浅灰色，完全不透明
+                        renderer.strokeColor = UIColor(white: 0.5, alpha: 1.0)  // 中等灰色边框，完全不透明
+                        renderer.lineWidth = 1.0
                     }
                 } else {
                     // 没有国家代码，显示为浅灰色覆盖（未访问状态）
-                    renderer.fillColor = UIColor(white: 0.9, alpha: 0.95)
-                    renderer.strokeColor = UIColor(white: 0.5, alpha: 0.8)
-                    renderer.lineWidth = 1.2
+                    renderer.fillColor = UIColor(white: 0.85, alpha: 1.0)
+                    renderer.strokeColor = UIColor(white: 0.5, alpha: 1.0)
+                    renderer.lineWidth = 1.0
                 }
                 
                 return renderer
