@@ -215,8 +215,8 @@ struct TravelMapView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.accentColor.opacity(0.12))
-                .foregroundStyle(.accent)
+                .background(Color.blue.opacity(0.12))
+                .foregroundStyle(Color.blue)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
