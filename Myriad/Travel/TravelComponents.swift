@@ -11,19 +11,50 @@ struct TripStatusTag: View {
 
     var body: some View {
         Text(status.title)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
+            .font(.caption.weight(.bold))
+            .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(tagBackground)
+            .background(
+                Capsule()
+                    .fill(tagBackgroundGradient)
+            )
             .foregroundStyle(tagForeground)
-            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(tagForeground.opacity(0.2), lineWidth: 0.5)
+            )
+            .shadow(color: tagForeground.opacity(0.15), radius: 4, x: 0, y: 2)
     }
 
-    private var tagBackground: Color {
+    private var tagBackgroundGradient: LinearGradient {
         switch status {
-        case .planned: return Color.orange.opacity(0.16)   // 蜜桃黄
-        case .traveling: return Color.green.opacity(0.14)  // 薄荷
-        case .completed: return Color.blue.opacity(0.14)   // 雾蓝
+        case .planned:
+            return LinearGradient(
+                colors: [
+                    Color.orange.opacity(0.2),
+                    Color.orange.opacity(0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .traveling:
+            return LinearGradient(
+                colors: [
+                    Color.green.opacity(0.2),
+                    Color.green.opacity(0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .completed:
+            return LinearGradient(
+                colors: [
+                    Color.blue.opacity(0.2),
+                    Color.blue.opacity(0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
@@ -40,51 +71,103 @@ struct TripCardRow: View {
     let trip: Trip
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
+            // 图片区域 - 优化设计
+            Group {
+                if let imageData = trip.heroImageData,
+                   let uiImage = UIImage(data: imageData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.3),
+                                            Color.white.opacity(0.1)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.gray.opacity(0.15),
+                                    Color.gray.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 64, height: 64)
+                        .overlay {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.secondary.opacity(0.5))
+                        }
+                }
+            }
+            .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
 
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.04))
-                .frame(width: 56, height: 56)
-                .overlay {
-                    if let imageData = trip.heroImageData,
-                       let uiImage = UIImage(data: imageData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    } else {
-                        Image(systemName: "photo")
+            // 内容区域
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(trip.title)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        Text(dateText)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                }
-                .clipped()
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(trip.title)
-                        .font(.headline)
 
                     Spacer()
 
                     TripStatusTag(status: trip.status)
                 }
 
-                Text(dateText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
                 if let primary = trip.primaryMemoryText, !primary.isEmpty {
                     Text(primary)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(.secondary.opacity(0.8))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(16)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                
+                // 顶部高光
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.2),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
+                    )
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
     }
 
     private var dateText: String {

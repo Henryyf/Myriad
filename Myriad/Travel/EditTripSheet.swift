@@ -23,10 +23,9 @@ struct EditTripSheet: View {
     @State private var heroImage: UIImage?
     
     // 可选国家列表（按字母顺序）
-    private let availableCountries: [(code: String, name: String, flag: String)] = 
-        CountryInfoProvider.countries.values
-            .map { ($0.code, $0.name, $0.flagEmoji) }
-            .sorted { $0.name < $1.name }
+    private var availableCountries: [(code: String, name: String, flag: String)] {
+        CountryInfoProvider.availableCountries
+    }
     
     init(store: TravelStore, trip: Trip) {
         self.store = store
@@ -54,11 +53,8 @@ struct EditTripSheet: View {
                     Picker("选择国家", selection: $selectedCountry) {
                         Text("未选择").tag(nil as String?)
                         ForEach(availableCountries, id: \.code) { country in
-                            HStack {
-                                Text(country.flag)
-                                Text(country.name)
-                            }
-                            .tag(country.code as String?)
+                            Text("\(country.name) \(country.flag)")
+                                .tag(country.code as String?)
                         }
                     }
                     .pickerStyle(.menu)

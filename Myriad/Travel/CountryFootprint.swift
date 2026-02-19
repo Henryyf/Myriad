@@ -29,7 +29,7 @@ struct CountryFootprint: Identifiable, Hashable {
     }
 }
 
-// MARK: - 国家信息提供者（Phase 1 静态数据）
+// MARK: - 国家信息提供者（从 JSON 文件加载）
 
 struct CountryInfo {
     let code: String            // 国家代码
@@ -39,81 +39,57 @@ struct CountryInfo {
     let description: String     // 一句话介绍
 }
 
+// JSON 数据结构
+private struct CountryData: Codable {
+    let code: String
+    let name: String
+    let flagEmoji: String
+    let latitude: Double
+    let longitude: Double
+    let description: String
+}
+
+private struct CountriesJSON: Codable {
+    let countries: [CountryData]
+}
+
 class CountryInfoProvider {
     
-    // Phase 1: 静态国家信息字典（可扩展）
-    static let countries: [String: CountryInfo] = [
-        "JP": CountryInfo(
-            code: "JP",
-            name: "日本",
-            flagEmoji: "🇯🇵",
-            coordinate: CLLocationCoordinate2D(latitude: 36.2048, longitude: 138.2529),
-            description: "樱花、寿司与温泉的国度"
-        ),
-        "US": CountryInfo(
-            code: "US",
-            name: "美国",
-            flagEmoji: "🇺🇸",
-            coordinate: CLLocationCoordinate2D(latitude: 37.0902, longitude: -95.7129),
-            description: "自由女神与好莱坞的故乡"
-        ),
-        "CA": CountryInfo(
-            code: "CA",
-            name: "加拿大",
-            flagEmoji: "🇨🇦",
-            coordinate: CLLocationCoordinate2D(latitude: 56.1304, longitude: -106.3468),
-            description: "枫叶之国，壮丽的自然风光"
-        ),
-        "GB": CountryInfo(
-            code: "GB",
-            name: "英国",
-            flagEmoji: "🇬🇧",
-            coordinate: CLLocationCoordinate2D(latitude: 55.3781, longitude: -3.4360),
-            description: "大本钟与下午茶的绅士之国"
-        ),
-        "FR": CountryInfo(
-            code: "FR",
-            name: "法国",
-            flagEmoji: "🇫🇷",
-            coordinate: CLLocationCoordinate2D(latitude: 46.2276, longitude: 2.2137),
-            description: "埃菲尔铁塔与红酒的浪漫之都"
-        ),
-        "CN": CountryInfo(
-            code: "CN",
-            name: "中国",
-            flagEmoji: "🇨🇳",
-            coordinate: CLLocationCoordinate2D(latitude: 35.8617, longitude: 104.1954),
-            description: "长城与美食的古老文明"
-        ),
-        "KR": CountryInfo(
-            code: "KR",
-            name: "韩国",
-            flagEmoji: "🇰🇷",
-            coordinate: CLLocationCoordinate2D(latitude: 35.9078, longitude: 127.7669),
-            description: "K-pop与韩剧的活力之国"
-        ),
-        "TH": CountryInfo(
-            code: "TH",
-            name: "泰国",
-            flagEmoji: "🇹🇭",
-            coordinate: CLLocationCoordinate2D(latitude: 15.8700, longitude: 100.9925),
-            description: "微笑之国，热带风情与佛教文化"
-        ),
-        "IT": CountryInfo(
-            code: "IT",
-            name: "意大利",
-            flagEmoji: "🇮🇹",
-            coordinate: CLLocationCoordinate2D(latitude: 41.8719, longitude: 12.5674),
-            description: "古罗马遗迹与披萨的艺术王国"
-        ),
-        "AU": CountryInfo(
-            code: "AU",
-            name: "澳大利亚",
-            flagEmoji: "🇦🇺",
-            coordinate: CLLocationCoordinate2D(latitude: -25.2744, longitude: 133.7751),
-            description: "袋鼠与考拉的阳光大陆"
-        )
-    ]
+    // 从 JSON 文件加载国家信息
+    private static var _countries: [String: CountryInfo]?
+    
+    static var countries: [String: CountryInfo] {
+        if let cached = _countries {
+            return cached
+        }
+        
+        guard let url = Bundle.main.url(forResource: "countries", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONDecoder().decode(CountriesJSON.self, from: data) else {
+            print("⚠️ 无法加载国家数据 JSON 文件，使用空字典")
+            _countries = [:]
+            return [:]
+        }
+        
+        var countryDict: [String: CountryInfo] = [:]
+        for countryData in json.countries {
+            let info = CountryInfo(
+                code: countryData.code,
+                name: countryData.name,
+                flagEmoji: countryData.flagEmoji,
+                coordinate: CLLocationCoordinate2D(
+                    latitude: countryData.latitude,
+                    longitude: countryData.longitude
+                ),
+                description: countryData.description
+            )
+            countryDict[countryData.code] = info
+        }
+        
+        _countries = countryDict
+        print("✅ 成功加载 \(countryDict.count) 个国家数据")
+        return countryDict
+    }
     
     // 从旅行标题推断国家代码（简化版）
     // Phase 1: 基于常见城市名称映射
@@ -173,4 +149,12 @@ class CountryInfoProvider {
     static func getInfo(for countryCode: String) -> CountryInfo? {
         return countries[countryCode]
     }
+    
+    // 获取可选国家列表（用于选择器）
+    static var availableCountries: [(code: String, name: String, flag: String)] {
+        countries.values
+            .map { ($0.code, $0.name, $0.flagEmoji) }
+            .sorted { $0.name < $1.name }
+    }
 }
+

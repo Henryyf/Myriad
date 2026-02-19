@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var travelStore = TravelStore()
+    @State private var tradingStore = TradingStore()
     
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -35,6 +36,15 @@ struct ContentView: View {
                             }
                             .buttonStyle(.plain)
 
+                            NavigationLink(value: "trading") {
+                                AppIconTile(
+                                    title: "投资",
+                                    iconName: "icon_trading",
+                                    iconPadding: 0
+                                )
+                            }
+                            .buttonStyle(.plain)
+
                             ComingSoonTile(title: "消消乐")
                         }
                         .padding(.top, 10)
@@ -46,6 +56,20 @@ struct ContentView: View {
             .navigationDestination(for: String.self) { destination in
                 if destination == "travel" {
                     TravelHomeView(store: travelStore)
+                } else if destination == "trading" {
+                    TradingHomeView(store: tradingStore)
+                }
+            }
+            .navigationDestination(for: TradingRoute.self) { route in
+                switch route {
+                case .portfolio:
+                    TradingHomeView(store: tradingStore)
+                case .scanImport:
+                    ScanImportSheet(store: tradingStore)
+                case .settings:
+                    TradingSettingsView(store: tradingStore)
+                default:
+                    EmptyView()
                 }
             }
             .navigationDestination(for: TravelRoute.self) { route in
@@ -87,6 +111,7 @@ struct HeaderView: View {
 struct AppIconTile: View {
     let title: String
     let iconName: String
+    var iconPadding: CGFloat = 7
 
     var body: some View {
         VStack(spacing: 10) {
@@ -97,7 +122,7 @@ struct AppIconTile: View {
                     Image(iconName)
                         .resizable()
                         .scaledToFit()
-                        .padding(7)
+                        .padding(iconPadding)
                         .clipShape(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                         )

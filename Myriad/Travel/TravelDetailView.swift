@@ -14,6 +14,8 @@ struct TravelDetailView: View {
 
     @State private var newMemoryText: String = ""
     @State private var showingEditSheet = false
+    @State private var showingDeleteConfirmation = false
+    @Environment(\.dismiss) private var dismiss
 
     // 关键：Detail 里不要直接使用传入的 trip 作为“真数据”
     // 因为 trip 是值类型，更新状态后它不会自动变化。
@@ -52,9 +54,32 @@ struct TravelDetailView: View {
                     }
                 }
             }
+            
+            ToolbarItem(placement: .topBarLeading) {
+                Button(role: .destructive) {
+                    showingDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.body)
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .sheet(isPresented: $showingEditSheet) {
             EditTripSheet(store: store, trip: currentTrip)
+        }
+        .confirmationDialog(
+            "删除旅行",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                store.deleteTrip(tripID: currentTrip.id)
+                dismiss()
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("确定要删除「\(currentTrip.title)」吗？此操作无法撤销。")
         }
     }
 
@@ -161,7 +186,11 @@ struct TravelDetailView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(currentTrip.memories) { mem in
-                        MemoryRow(memory: mem)
+                        MemoryRow(
+                            store: store,
+                            tripID: currentTrip.id,
+                            memory: mem
+                        )
                     }
                 }
             }
@@ -182,22 +211,50 @@ struct TravelDetailView: View {
 }
 
 private struct MemoryRow: View {
+    let store: TravelStore
+    let tripID: UUID
     let memory: MemoryItem
+    
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(timeText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(timeText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            Text(memory.text)
-                .font(.body)
-                .foregroundStyle(.primary)
+                Text(memory.text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            
+            Spacer()
+            
+            Button(role: .destructive) {
+                showingDeleteConfirmation = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.7))
+                    .padding(8)
+            }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .confirmationDialog(
+            "删除记忆",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                store.deleteMemory(tripID: tripID, memoryID: memory.id)
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("确定要删除这条记忆吗？")
+        }
     }
 
     private var timeText: String {

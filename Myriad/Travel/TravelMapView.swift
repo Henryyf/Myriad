@@ -9,40 +9,39 @@ import SwiftUI
 import MapKit
 
 struct TravelMapView: View {
-    
+
     @Environment(\.colorScheme) private var colorScheme
     var store: TravelStore
-    
+
     @State private var selectedCountry: CountryFootprint?
-    @State private var cameraPosition: MapCameraPosition = .automatic
-    
-    // 获取所有去过的国家代码集合（统一转换为大写以便匹配）
+    @State private var cameraPosition: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 35.8617, longitude: 104.1954),
+            span: MKCoordinateSpan(latitudeDelta: 60, longitudeDelta: 80)
+        )
+    )
+
     private var visitedCountryCodes: Set<String> {
         Set(store.trips.compactMap { $0.countryCode?.uppercased() })
     }
-    
-    // 从 trips 聚合国家足迹（显示所有旅行，不筛选状态）
+
     private var countryFootprints: [CountryFootprint] {
         var countryDict: [String: [Trip]] = [:]
-        
-        // 按国家分组旅行
+
         for trip in store.trips {
-            // 只使用用户手动选择的国家代码
             guard let code = trip.countryCode,
                   let _ = CountryInfoProvider.getInfo(for: code) else {
                 continue
             }
-            
-            countryDict[code, default: []].append(trip)
+            countryDict[code.uppercased(), default: []].append(trip)
         }
-        
-        // 转换为 CountryFootprint
+
         return countryDict.compactMap { code, trips in
             guard let info = CountryInfoProvider.getInfo(for: code) else { return nil }
-            
+
             let sortedTrips = trips.sorted { $0.startDate > $1.startDate }
             let mostRecentTrip = sortedTrips.first
-            
+
             return CountryFootprint(
                 id: code,
                 name: info.name,
@@ -56,18 +55,14 @@ struct TravelMapView: View {
         }
         .sorted { $0.name < $1.name }
     }
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // 顶部标题区
                 headerSection
-                
-                // 地图
                 mapSection
             }
-            
-            // 底部卡片（选中国家时显示）
+
             if let country = selectedCountry {
                 countryDetailCard(country)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -76,24 +71,27 @@ struct TravelMapView: View {
         .navigationTitle("旅行地图")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // 首次加载时使用自动调整
-            cameraPosition = .automatic
+            cameraPosition = .region(
+                MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 35.8617, longitude: 104.1954),
+                    span: MKCoordinateSpan(latitudeDelta: 60, longitudeDelta: 80)
+                )
+            )
         }
-        .onChange(of: selectedCountry) { oldValue, newValue in
-            // 当选中国家时，框选到国家边界
-            if let country = newValue {
+        .onChange(of: selectedCountry) { _, newValue in
+            guard let country = newValue else { return }
+            // 可选：稍微延迟让卡片先弹出更顺滑
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 focusOnCountry(country)
             }
         }
     }
-    
-    // MARK: - Header Section
-    
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("旅行地图")
                 .font(.title2.bold())
-            
+
             Text("已解锁 \(countryFootprints.count) 个国家")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -103,9 +101,7 @@ struct TravelMapView: View {
         .padding(.top, 10)
         .padding(.bottom, 12)
     }
-    
-    // MARK: - Map Section
-    
+
     private var mapSection: some View {
         GeoJSONMapView(
             visitedCountryCodes: visitedCountryCodes,
@@ -115,99 +111,277 @@ struct TravelMapView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
-    // MARK: - Country Detail Card
-    
+
     private func countryDetailCard(_ country: CountryFootprint) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                // 国旗
-                Text(country.flagEmoji)
-                    .font(.system(size: 44))
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(country.name)
-                        .font(.title3.bold())
+        VStack(alignment: .leading, spacing: 0) {
+            // 头部区域 - 优化设计
+            HStack(spacing: 16) {
+                // 国旗容器 - 添加背景和阴影
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.blue.opacity(0.1),
+                                    Color.purple.opacity(0.05)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 64, height: 64)
                     
+                    Text(country.flagEmoji)
+                        .font(.system(size: 36))
+                }
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(country.name)
+                        .font(.title2.bold())
+                        .foregroundStyle(.primary)
+
                     if let info = CountryInfoProvider.getInfo(for: country.id) {
                         Text(info.description)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
-                
+
                 Spacer()
-                
-                // 关闭按钮
+
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         selectedCountry = nil
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .font(.title2)
+                        .foregroundStyle(.secondary.opacity(0.6))
                         .symbolRenderingMode(.hierarchical)
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .frame(width: 28, height: 28)
+                        )
                 }
             }
-            
-            // 统计信息
+            .padding(24)
+            .padding(.bottom, 20)
+
+            // 统计信息区域 - 美化设计
             HStack(spacing: 20) {
-                StatBadge(
-                    icon: "airplane.departure",
-                    label: "旅行",
-                    value: "\(country.tripsCount)"
-                )
-                
-                if let lastDate = country.lastTripDate {
-                    StatBadge(
-                        icon: "calendar",
-                        label: "最近",
-                        value: formatDate(lastDate)
-                    )
-                }
-                
-                Spacer()
-            }
-            
-            // CTA 按钮
-            NavigationLink(value: TravelRoute.list) {
-                HStack {
-                    Text("查看该国家的旅行")
-                        .font(.subheadline.weight(.semibold))
-                    
-                    Image(systemName: "arrow.right")
-                        .font(.subheadline)
+                // 旅行次数卡片
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "airplane.departure")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color.blue, Color.blue.opacity(0.7)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        Text("\(country.tripsCount)")
+                            .font(.title2.bold())
+                            .foregroundStyle(.primary)
+                    }
+                    Text("次旅行")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.blue.opacity(0.12))
-                .foregroundStyle(Color.blue)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.vertical, 16)
+                .padding(.horizontal, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.blue.opacity(0.08),
+                                    Color.blue.opacity(0.03)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+
+                // 最近一次旅行卡片
+                if let lastDate = country.lastTripDate {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.purple, Color.purple.opacity(0.7)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            Text(formatDate(lastDate))
+                                .font(.title2.bold())
+                                .foregroundStyle(.primary)
+                        }
+                        Text("最近一次")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.purple.opacity(0.08),
+                                        Color.purple.opacity(0.03)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                }
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+
+            // 分隔线 - 更精致
+            Divider()
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color.clear,
+                            Color.secondary.opacity(0.2),
+                            Color.clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+
+            tripsListSection(for: country)
         }
-        .padding(20)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: -4)
-        .padding(.horizontal)
+        .background(
+            ZStack {
+                // 主背景
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                
+                // 顶部渐变装饰
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.3),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .center
+                        )
+                    )
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: Color.black.opacity(0.12), radius: 24, x: 0, y: -8)
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 16)
         .padding(.bottom, 20)
     }
-    
-    // MARK: - Helpers
-    
-    /// 框选到指定国家的边界
+
+    private func getTripsForCountry(_ country: CountryFootprint) -> [Trip] {
+        country.tripIDs
+            .compactMap { tripID in store.trips.first(where: { $0.id == tripID }) }
+            .sorted { $0.startDate > $1.startDate }
+    }
+
+    @ViewBuilder
+    private func tripsListSection(for country: CountryFootprint) -> some View {
+        let countryTrips = getTripsForCountry(country)
+
+        if countryTrips.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "map")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                Text("暂无旅行记录")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 32)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                // 标题区域 - 优化设计
+                HStack(spacing: 8) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                    
+                    Text("旅行记录")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                    
+                    // 计数徽章 - 更精致
+                    Text("\(countryTrips.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.blue,
+                                            Color.blue.opacity(0.8)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .shadow(color: Color.blue.opacity(0.3), radius: 4, x: 0, y: 2)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+
+                ScrollView {
+                    VStack(spacing: 14) {
+                        ForEach(countryTrips, id: \.id) { trip in
+                            NavigationLink(value: TravelRoute.detail(trip.id)) {
+                                TripCardRow(trip: trip)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                }
+                .frame(maxHeight: 280)
+            }
+        }
+    }
+
     private func focusOnCountry(_ country: CountryFootprint) {
-        // 使用国家坐标点并添加合适的边距
+        // 更新相机位置，updateUIView 会检测到变化并触发动画
         cameraPosition = .region(
             MKCoordinateRegion(
                 center: country.coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
+                span: MKCoordinateSpan(latitudeDelta: 30, longitudeDelta: 30)
             )
         )
     }
-    
+
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy.MM"
@@ -215,243 +389,210 @@ struct TravelMapView: View {
     }
 }
 
-// MARK: - Country Marker
-
-struct CountryMarker: View {
-    let flagEmoji: String
-    let status: TripStatus
-    let isSelected: Bool
-    
-    var body: some View {
-        ZStack {
-            // 背景圆
-            Circle()
-                .fill(.ultraThinMaterial)
-                .frame(width: isSelected ? 60 : 48, height: isSelected ? 60 : 48)
-                .overlay {
-                    Circle()
-                        .strokeBorder(markerColor, lineWidth: isSelected ? 3 : 2)
-                }
-                .shadow(color: markerColor.opacity(0.3), radius: isSelected ? 8 : 4, x: 0, y: 2)
-            
-            // 国旗 emoji
-            Text(flagEmoji)
-                .font(.system(size: isSelected ? 28 : 22))
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-    }
-    
-    private var markerColor: Color {
-        switch status {
-        case .completed:
-            return Color.blue.opacity(0.7)      // 雾蓝
-        case .traveling:
-            return Color.green.opacity(0.7)     // 薄荷
-        case .planned:
-            return Color.orange.opacity(0.7)    // 蜜桃
-        }
-    }
-}
-
-// MARK: - Stat Badge
-
-struct StatBadge: View {
-    let icon: String
-    let label: String
-    let value: String
-    
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.caption.weight(.semibold))
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-// MARK: - GeoJSON Map View
+// MARK: - GeoJSON Map View (只灰掉未访问国家，访问国家保持原图)
 
 struct GeoJSONMapView: UIViewRepresentable {
     let visitedCountryCodes: Set<String>
     let countries: [CountryFootprint]
     @Binding var selectedCountry: CountryFootprint?
     @Binding var cameraPosition: MapCameraPosition
-    
+
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
-        
-        // 使用标准地图配置，但我们会用覆盖层覆盖所有国家
+
         let configuration = MKStandardMapConfiguration(elevationStyle: .flat)
+        configuration.pointOfInterestFilter = .excludingAll
         mapView.preferredConfiguration = configuration
-        
-        // 加载 geoJSON（必须在设置配置之后）
-        context.coordinator.loadGeoJSON(mapView: mapView, visitedCodes: visitedCountryCodes)
-        
-        // 添加国家标记
+
+        context.coordinator.loadGeoJSONIfNeeded()
+        context.coordinator.syncUnvisitedOverlays(on: mapView, visitedCodes: visitedCountryCodes)
+
         context.coordinator.addAnnotations(mapView: mapView, countries: countries)
-        
         return mapView
     }
-    
+
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // 更新国家标记
-        context.coordinator.updateAnnotations(mapView: mapView, countries: countries, selectedCountry: selectedCountry)
-        
-        // 更新 geoJSON 覆盖层颜色
-        context.coordinator.updateOverlayColors(mapView: mapView, visitedCodes: visitedCountryCodes)
-        
-        // 更新相机位置
-        // 检查是否有新的 region 需要设置
-        if let targetRegion = context.coordinator.getRegion(from: cameraPosition) {
-            // 如果有目标 region，更新地图区域
-            if context.coordinator.lastRegion == nil || 
-               abs(mapView.region.center.latitude - targetRegion.center.latitude) > 0.001 || 
-               abs(mapView.region.center.longitude - targetRegion.center.longitude) > 0.001 {
-                mapView.setRegion(targetRegion, animated: true)
-                context.coordinator.lastRegion = targetRegion
+        context.coordinator.updateAnnotations(mapView: mapView, countries: countries)
+        context.coordinator.updateAnnotationSelection(mapView: mapView, selectedCountry: selectedCountry)
+
+        context.coordinator.syncUnvisitedOverlays(on: mapView, visitedCodes: visitedCountryCodes)
+        context.coordinator.handleSelectionChange(mapView: mapView, selectedCountry: selectedCountry)
+
+        // 处理相机位置更新，确保动画能正确触发
+        // 注意：当取消卡片时（selectedCountry 为 nil 且 lastRegion 不为 nil），
+        // 恢复动画已经在 handleSelectionChange 中处理了，这里跳过避免覆盖
+        // 初始加载时（lastRegion 为 nil），需要处理 cameraPosition
+        // 选择国家时（selectedCountry 不为 nil），需要处理聚焦动画
+        let shouldProcessCamera = context.coordinator.lastRegion == nil || selectedCountry != nil
+        if shouldProcessCamera, let targetRegion = context.coordinator.getRegion(from: cameraPosition) {
+            let shouldUpdate: Bool
+            let needsAnimation: Bool
+            
+            if let lastRegion = context.coordinator.lastRegion {
+                // 比较目标区域和上次记录的区域
+                let latDiff = abs(targetRegion.center.latitude - lastRegion.center.latitude)
+                let lonDiff = abs(targetRegion.center.longitude - lastRegion.center.longitude)
+                let spanLatDiff = abs(targetRegion.span.latitudeDelta - lastRegion.span.latitudeDelta)
+                let spanLonDiff = abs(targetRegion.span.longitudeDelta - lastRegion.span.longitudeDelta)
+                
+                shouldUpdate = latDiff > 0.001 || lonDiff > 0.001 || 
+                              spanLatDiff > 0.001 || spanLonDiff > 0.001
+                // 如果 lastRegion 存在且区域不同，说明是程序触发的更新，使用动画
+                needsAnimation = shouldUpdate
+            } else {
+                // 首次设置，总是更新，但不使用动画（初始加载）
+                shouldUpdate = true
+                needsAnimation = false
             }
-        } else {
-            // 如果是 automatic 类型，自动调整到显示所有国家
-            if !countries.isEmpty {
-                let coordinates = countries.map { $0.coordinate }
-                let latitudes = coordinates.map { $0.latitude }
-                let longitudes = coordinates.map { $0.longitude }
-                
-                let minLat = latitudes.min()!
-                let maxLat = latitudes.max()!
-                let minLon = longitudes.min()!
-                let maxLon = longitudes.max()!
-                
-                let centerLat = (minLat + maxLat) / 2
-                let centerLon = (minLon + maxLon) / 2
-                let latDelta = max((maxLat - minLat) * 1.3, 20)
-                let lonDelta = max((maxLon - minLon) * 1.3, 30)
-                
-                let region = MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
-                    span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
-                )
-                mapView.setRegion(region, animated: true)
+            
+            if shouldUpdate {
+                if needsAnimation {
+                    // 使用 MapKit 的原生 setRegion 动画
+                    // 这会自动提供平滑的中心点移动和缩放过渡
+                    // MapKit 内部使用优化的缓动函数，确保动画丝滑
+                    mapView.setRegion(targetRegion, animated: true)
+                    // lastRegion 会在 regionDidChangeAnimated 中更新
+                } else {
+                    // 初始加载，不使用动画，立即更新 lastRegion
+                    mapView.setRegion(targetRegion, animated: false)
+                    context.coordinator.lastRegion = targetRegion
+                }
             }
         }
     }
-    
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(parent: self)
     }
-    
-    class Coordinator: NSObject, MKMapViewDelegate {
-        var parent: GeoJSONMapView
-        var polygonToCountryCode: [MKPolygon: String] = [:]
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private let parent: GeoJSONMapView
+
+        private var polygonsByISO2: [String: [MKPolygon]] = [:]
+        private var polygonToCountryCode: [MKPolygon: String] = [:]
+
+        private var activeOverlays: [MKPolygon] = []
+        private var activeVisitedCodes: Set<String> = []
+
         var annotations: [String: MKPointAnnotation] = [:]
         var lastRegion: MKCoordinateRegion?
-        var renderCount = 0  // 用于调试计数
-        
-        init(_ parent: GeoJSONMapView) {
+        private var regionBeforeSelection: MKCoordinateRegion?
+        private var lastSelectedCountry: CountryFootprint?
+
+        init(parent: GeoJSONMapView) {
             self.parent = parent
         }
-        
-        // 从 MapCameraPosition 中提取 MKCoordinateRegion
+
         func getRegion(from position: MapCameraPosition) -> MKCoordinateRegion? {
-            // 使用反射来检查 MapCameraPosition 的内部结构
             let mirror = Mirror(reflecting: position)
             for child in mirror.children {
-                if let region = child.value as? MKCoordinateRegion {
-                    return region
-                }
-                // 如果子值也是结构体，递归检查
+                if let region = child.value as? MKCoordinateRegion { return region }
                 let childMirror = Mirror(reflecting: child.value)
                 for grandChild in childMirror.children {
-                    if let region = grandChild.value as? MKCoordinateRegion {
-                        return region
-                    }
+                    if let region = grandChild.value as? MKCoordinateRegion { return region }
                 }
             }
             return nil
         }
-        
-        func loadGeoJSON(mapView: MKMapView, visitedCodes: Set<String>) {
+
+        // MARK: - GeoJSON
+
+        func loadGeoJSONIfNeeded() {
+            guard polygonsByISO2.isEmpty else { return }
+
             guard let url = Bundle.main.url(forResource: "ne_110m_admin_0_countries", withExtension: "geojson"),
                   let data = try? Data(contentsOf: url) else {
                 print("⚠️ 无法加载 geoJSON 文件")
                 return
             }
-            
+
             do {
                 let geoJSON = try MKGeoJSONDecoder().decode(data)
-                var polygonCount = 0
-                var countryCodeCount = 0
-                var polygonWithCodeCount = 0
-                var polygonWithoutCodeCount = 0
-                
+                var countPolygons = 0
+
                 for item in geoJSON {
-                    if let feature = item as? MKGeoJSONFeature {
-                        // 获取国家代码（可能为空）
-                        var countryCode: String?
-                        
-                        // MKGeoJSONFeature.properties 是 Data? 类型，需要解码
-                        if let propertiesData = feature.properties {
-                            if let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any] {
-                                // 尝试获取 ISO_A2
-                                if let isoA2 = jsonObject["ISO_A2"] as? String, !isoA2.isEmpty, isoA2 != "-99" {
-                                    countryCode = isoA2
-                                    countryCodeCount += 1
-                                    
-                                    // 特别检查中国、俄罗斯、澳大利亚
-                                    if ["CN", "RU", "AU", "CHN", "RUS", "AUS"].contains(isoA2.uppercased()) {
-                                        print("📍 发现关键国家: ISO_A2=\(isoA2), 访问列表: \(visitedCodes)")
-                                    }
-                                }
-                            }
+                    guard let feature = item as? MKGeoJSONFeature else { continue }
+
+                    var iso2: String? = nil
+                    if let propertiesData = feature.properties,
+                       let jsonObject = try? JSONSerialization.jsonObject(with: propertiesData) as? [String: Any] {
+                        if let isoA2 = jsonObject["ISO_A2"] as? String,
+                           !isoA2.isEmpty,
+                           isoA2 != "-99" {
+                            iso2 = isoA2.uppercased()
+                        } else if let isoA2EH = jsonObject["ISO_A2_EH"] as? String,
+                                  !isoA2EH.isEmpty,
+                                  isoA2EH != "-99" {
+                            iso2 = isoA2EH.uppercased()
                         }
-                        
-                        // 为每个多边形创建覆盖层（无论是否有国家代码都要渲染）
-                        for geometry in feature.geometry {
-                            if let polygon = geometry as? MKPolygon {
-                                // 如果有国家代码，统一转换为大写存储；如果没有，存储空字符串
-                                if let code = countryCode {
-                                    let upperCode = code.uppercased()
-                                    polygonToCountryCode[polygon] = upperCode  // 统一转换为大写
-                                    polygonWithCodeCount += 1
-                                    
-                                    // 特别追踪中国、俄罗斯、澳大利亚的多边形
-                                    if ["CN", "RU", "AU"].contains(upperCode) {
-                                        print("📍 加载多边形: 国家=\(upperCode), 总数=\(polygonCount + 1)")
-                                    }
-                                } else {
-                                    // 没有国家代码的国家也存储，但值为空字符串
-                                    polygonToCountryCode[polygon] = ""
-                                    polygonWithoutCodeCount += 1
-                                }
-                                mapView.addOverlay(polygon)
-                                polygonCount += 1
+                    }
+
+                    guard let code = iso2 else { continue }
+
+                    for geometry in feature.geometry {
+                        if let polygon = geometry as? MKPolygon {
+                            polygonsByISO2[code, default: []].append(polygon)
+                            polygonToCountryCode[polygon] = code
+                            countPolygons += 1
+                        } else if let multi = geometry as? MKMultiPolygon {
+                            for p in multi.polygons {
+                                polygonsByISO2[code, default: []].append(p)
+                                polygonToCountryCode[p] = code
+                                countPolygons += 1
                             }
                         }
                     }
                 }
-                print("✅ 成功加载 geoJSON: \(polygonCount) 个多边形")
-                print("   有国家代码的多边形: \(polygonWithCodeCount) 个")
-                print("   没有国家代码的多边形: \(polygonWithoutCodeCount) 个")
-                print("   国家代码种类: \(countryCodeCount) 个")
-                print("   访问过的国家: \(visitedCodes)")
+
+                print("✅ GeoJSON loaded: polygons=\(countPolygons), countries=\(polygonsByISO2.keys.count)")
             } catch {
                 print("❌ 解析 geoJSON 失败: \(error)")
             }
         }
-        
+
+        /// 只把“未访问国家”加为 overlays（灰色遮罩）；访问国家不加 overlay -> 保持地图原色
+        func syncUnvisitedOverlays(on mapView: MKMapView, visitedCodes: Set<String>) {
+            let newVisited = Set(visitedCodes.map { $0.uppercased() })
+            guard newVisited != activeVisitedCodes else { return }
+
+            if !activeOverlays.isEmpty {
+                mapView.removeOverlays(activeOverlays)
+                activeOverlays.removeAll()
+            }
+
+            var unvisited: [MKPolygon] = []
+            for (code, polygons) in polygonsByISO2 {
+                if !newVisited.contains(code) {
+                    unvisited.append(contentsOf: polygons)
+                }
+            }
+
+            if !unvisited.isEmpty {
+                mapView.addOverlays(unvisited)
+                activeOverlays = unvisited
+            }
+
+            activeVisitedCodes = newVisited
+        }
+
+        // MARK: - Overlay Renderer (灰色)
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let polygon = overlay as? MKPolygon else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
+
+            let renderer = MKPolygonRenderer(polygon: polygon)
+            // 当前 overlays 全部代表“未访问国家”
+            renderer.fillColor = UIColor(white: 0.75, alpha: 1.0)
+            renderer.strokeColor = UIColor(white: 0.4, alpha: 1.0)
+            renderer.lineWidth = 1.2
+            return renderer
+        }
+
+        // MARK: - Annotations
+
         func addAnnotations(mapView: MKMapView, countries: [CountryFootprint]) {
             for country in countries {
                 let annotation = MKPointAnnotation()
@@ -461,20 +602,18 @@ struct GeoJSONMapView: UIViewRepresentable {
                 mapView.addAnnotation(annotation)
             }
         }
-        
-        func updateAnnotations(mapView: MKMapView, countries: [CountryFootprint], selectedCountry: CountryFootprint?) {
+
+        func updateAnnotations(mapView: MKMapView, countries: [CountryFootprint]) {
             let currentIDs = Set(countries.map { $0.id })
             let existingIDs = Set(annotations.keys)
-            
-            // 移除不存在的标记
+
             for id in existingIDs.subtracting(currentIDs) {
                 if let annotation = annotations[id] {
                     mapView.removeAnnotation(annotation)
                     annotations.removeValue(forKey: id)
                 }
             }
-            
-            // 添加新标记
+
             for country in countries where annotations[country.id] == nil {
                 let annotation = MKPointAnnotation()
                 annotation.coordinate = country.coordinate
@@ -483,156 +622,160 @@ struct GeoJSONMapView: UIViewRepresentable {
                 mapView.addAnnotation(annotation)
             }
         }
-        
-        func updateOverlayColors(mapView: MKMapView, visitedCodes: Set<String>) {
-            // 颜色更新在 rendererFor 中实时处理
-            // 当覆盖层需要重新渲染时，rendererFor 会自动被调用
-        }
-        
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let polygon = overlay as? MKPolygon {
-                let renderer = MKPolygonRenderer(polygon: polygon)
-                
-                // 检查多边形是否在字典中
-                let countryCode = polygonToCountryCode[polygon]
-                
-                // 根据国家代码判断是否访问过
-                if let code = countryCode, !code.isEmpty {
-                    // 有国家代码，检查是否访问过（countryCode 已经是大写）
-                    let isVisited = parent.visitedCountryCodes.contains(code)
-                    
-                    // 调试：记录所有被渲染的国家（打印访问过的和部分未访问的）
-                    renderCount += 1
-                    
-                    // 特别检查中国、俄罗斯、澳大利亚
-                    if ["CN", "RU", "AU"].contains(code) {
-                        print("🔍 渲染关键国家: \(code), isVisited=\(isVisited), 访问列表=\(parent.visitedCountryCodes)")
-                    }
-                    
-                    if isVisited {
-                        // 访问过的国家：蓝色填充和边框（明显可见）
-                        renderer.fillColor = UIColor.systemBlue.withAlphaComponent(0.7)
-                        renderer.strokeColor = UIColor.systemBlue.withAlphaComponent(0.9)
-                        renderer.lineWidth = 2.5
-                        print("🔵 访问过的国家: \(code) - 蓝色")
-                    } else {
-                        // 未访问过的国家：使用深灰色完全不透明覆盖默认地图颜色
-                        // 使用深灰色确保能够完全覆盖默认地图的彩色，实现黑白效果
-                        renderer.fillColor = UIColor(white: 0.75, alpha: 1.0)  // 深灰色，完全不透明
-                        renderer.strokeColor = UIColor(white: 0.4, alpha: 1.0)  // 深灰色边框，完全不透明
-                        renderer.lineWidth = 1.2
-                        
-                        // 只打印前10个未访问的国家作为示例
-                        if renderCount <= 10 {
-                            print("⚫ 未访问的国家: \(code) - 深灰色")
-                        }
-                    }
-                } else {
-                    // 没有国家代码，显示为浅灰色覆盖（未访问状态）
-                    renderCount += 1
-                    if renderCount <= 30 {  // 打印前30个没有代码的多边形
-                        let hasEntry = polygonToCountryCode[polygon] != nil
-                        let codeValue = polygonToCountryCode[polygon] ?? "nil"
-                        print("⚪ 渲染无代码多边形: 字典中有条目=\(hasEntry), 值='\(codeValue)'")
-                    }
-                    renderer.fillColor = UIColor(white: 0.85, alpha: 1.0)
-                    renderer.strokeColor = UIColor(white: 0.5, alpha: 1.0)
-                    renderer.lineWidth = 1.0
-                }
-                
-                return renderer
+
+        func updateAnnotationSelection(mapView: MKMapView, selectedCountry: CountryFootprint?) {
+            for annotation in mapView.annotations {
+                guard let point = annotation as? MKPointAnnotation,
+                      let view = mapView.view(for: annotation),
+                      let country = parent.countries.first(where: {
+                          abs($0.coordinate.latitude - point.coordinate.latitude) < 0.01 &&
+                          abs($0.coordinate.longitude - point.coordinate.longitude) < 0.01
+                      }) else { continue }
+
+                let isSelected = (selectedCountry?.id == country.id)
+                let markerView = createMarkerView(for: country, isSelected: isSelected)
+
+                view.subviews.forEach { $0.removeFromSuperview() }
+                view.addSubview(markerView)
+                view.frame = markerView.bounds
+
+                let offset: CGFloat = markerView.bounds.height / 2
+                view.centerOffset = CGPoint(x: 0, y: -offset)
             }
-            return MKOverlayRenderer(overlay: overlay)
         }
-        
+
+        // MARK: - Annotation View
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            guard let pointAnnotation = annotation as? MKPointAnnotation else {
-                return nil
-            }
-            
-            // 通过坐标查找对应的国家
-            guard let country = parent.countries.first(where: { 
+            guard let pointAnnotation = annotation as? MKPointAnnotation else { return nil }
+
+            guard let country = parent.countries.first(where: {
                 abs($0.coordinate.latitude - pointAnnotation.coordinate.latitude) < 0.01 &&
                 abs($0.coordinate.longitude - pointAnnotation.coordinate.longitude) < 0.01
-            }) else {
-                return nil
-            }
-            
+            }) else { return nil }
+
             let identifier = "countryMarker"
-            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-            
-            if annotationView == nil {
-                annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                annotationView?.canShowCallout = false
-            } else {
-                annotationView?.annotation = annotation
-            }
-            
-            // 创建自定义标记视图
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            view.annotation = annotation
+            view.canShowCallout = false
+            view.isEnabled = true
+
             let isSelected = parent.selectedCountry?.id == country.id
             let markerView = createMarkerView(for: country, isSelected: isSelected)
-            
-            annotationView?.subviews.forEach { $0.removeFromSuperview() }
-            annotationView?.addSubview(markerView)
-            annotationView?.frame = markerView.bounds
-            
+
+            view.subviews.forEach { $0.removeFromSuperview() }
+            view.addSubview(markerView)
+            view.frame = markerView.bounds
+
             let offset: CGFloat = markerView.bounds.height / 2
-            annotationView?.centerOffset = CGPoint(x: 0, y: -offset)
-            
-            return annotationView
+            view.centerOffset = CGPoint(x: 0, y: -offset)
+
+            return view
         }
-        
-        func createMarkerView(for country: CountryFootprint, isSelected: Bool) -> UIView {
+
+        private func createMarkerView(for country: CountryFootprint, isSelected: Bool) -> UIView {
             let size: CGFloat = isSelected ? 60 : 48
             let container = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
-            
+            container.isUserInteractionEnabled = false
+
             let circle = UIView(frame: container.bounds)
             circle.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
             circle.layer.cornerRadius = size / 2
             circle.clipsToBounds = true
-            
+            circle.isUserInteractionEnabled = false
+
             let borderColor: UIColor
             switch country.status {
-            case .completed:
-                borderColor = UIColor.systemBlue.withAlphaComponent(0.7)
-            case .traveling:
-                borderColor = UIColor.systemGreen.withAlphaComponent(0.7)
-            case .planned:
-                borderColor = UIColor.systemOrange.withAlphaComponent(0.7)
+            case .completed: borderColor = UIColor.systemBlue.withAlphaComponent(0.7)
+            case .traveling: borderColor = UIColor.systemGreen.withAlphaComponent(0.7)
+            case .planned: borderColor = UIColor.systemOrange.withAlphaComponent(0.7)
             }
-            
+
             circle.layer.borderWidth = isSelected ? 3 : 2
             circle.layer.borderColor = borderColor.cgColor
             circle.layer.shadowColor = borderColor.cgColor
             circle.layer.shadowOpacity = 0.3
             circle.layer.shadowRadius = isSelected ? 8 : 4
             circle.layer.shadowOffset = CGSize(width: 0, height: 2)
-            
+
             container.addSubview(circle)
-            
+
             let label = UILabel(frame: container.bounds)
             label.text = country.flagEmoji
             label.font = UIFont.systemFont(ofSize: isSelected ? 28 : 22)
             label.textAlignment = .center
+            label.isUserInteractionEnabled = false
             container.addSubview(label)
-            
+
             return container
         }
-        
+
+        // MARK: - Selection (唯一 didSelect：避免重复声明)
+
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-            guard let pointAnnotation = view.annotation as? MKPointAnnotation else {
+            guard let point = view.annotation as? MKPointAnnotation else {
+                mapView.deselectAnnotation(view.annotation, animated: false)
                 return
             }
-            
-            // 通过坐标查找对应的国家
-            guard let country = parent.countries.first(where: { 
-                abs($0.coordinate.latitude - pointAnnotation.coordinate.latitude) < 0.01 &&
-                abs($0.coordinate.longitude - pointAnnotation.coordinate.longitude) < 0.01
+
+            guard let country = parent.countries.first(where: {
+                abs($0.coordinate.latitude - point.coordinate.latitude) < 0.01 &&
+                abs($0.coordinate.longitude - point.coordinate.longitude) < 0.01
             }) else {
+                mapView.deselectAnnotation(view.annotation, animated: false)
                 return
             }
+
+            if regionBeforeSelection == nil || parent.selectedCountry == nil {
+                regionBeforeSelection = mapView.region
+            }
+
+            mapView.deselectAnnotation(view.annotation, animated: false)
+
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    self.parent.selectedCountry = country
+                }
+            }
+        }
+
+        func handleSelectionChange(mapView: MKMapView, selectedCountry: CountryFootprint?) {
+            if lastSelectedCountry != nil && selectedCountry == nil {
+                if let saved = regionBeforeSelection {
+                    // 恢复区域，使用动画
+                    mapView.setRegion(saved, animated: true)
+                    // 立即更新 lastRegion，防止 updateUIView 中的逻辑覆盖恢复动画
+                    lastRegion = saved
+                    regionBeforeSelection = nil
+                }
+            }
+            lastSelectedCountry = selectedCountry
+        }
+        
+        // MARK: - Region Change Tracking
+        
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            let currentRegion = mapView.region
             
-            parent.selectedCountry = country
+            if animated {
+                // 程序触发的动画完成时，更新 lastRegion
+                // 这包括选择国家时的聚焦动画和取消卡片时的恢复动画
+                lastRegion = currentRegion
+            } else {
+                // 用户手动拖动地图时，更新 lastRegion
+                // 检查当前区域是否与 lastRegion 不同
+                if let last = lastRegion {
+                    let latDiff = abs(currentRegion.center.latitude - last.center.latitude)
+                    let lonDiff = abs(currentRegion.center.longitude - last.center.longitude)
+                    if latDiff > 0.001 || lonDiff > 0.001 {
+                        // 用户手动拖动，更新 lastRegion
+                        lastRegion = currentRegion
+                    }
+                } else {
+                    // lastRegion 为空，直接更新
+                    lastRegion = currentRegion
+                }
+            }
         }
     }
 }
