@@ -19,7 +19,7 @@ struct TradingHomeView: View {
     @State private var signalError: String?
     @State private var isLoadingSignal = false
     @State private var strategy = SevenStarStrategy()
-    @StateObject private var notificationManager = NotificationManager()
+    @State private var notificationManager = NotificationManager()
 
     var body: some View {
         ScrollView {
@@ -326,7 +326,6 @@ struct TradingHomeView: View {
     /// 把所有操作建议合并成一个列表（去重）
     private var allActions: [ActionItem] {
         var items: [ActionItem] = []
-        let buyNames = Set(buyAdviceNames)
 
         // 当前持仓的建议（卖出、加仓、减仓，跳过买入——由下面统一处理）
         for (name, action) in advices {
