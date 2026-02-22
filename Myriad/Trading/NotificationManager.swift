@@ -13,13 +13,7 @@ import Observation
 @Observable
 class NotificationManager {
     
-    @Published var isAuthorized = false
-    
-    init() {
-        Task {
-            await checkAuthorizationStatus()
-        }
-    }
+    var isAuthorized = false
     
     // 检查通知权限
     func checkAuthorizationStatus() async {

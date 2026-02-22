@@ -33,7 +33,7 @@ struct AnnouncementsView: View {
         }
         .navigationTitle("公告")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: UUID.self) { id in
+        .navigationDestination(for: String.self) { id in
             if let item = announcements.first(where: { $0.id == id }) {
                 AnnouncementDetailView(announcement: item)
             }
