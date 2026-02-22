@@ -88,7 +88,7 @@ struct AnnouncementsView: View {
         isLoading = true
         defer { isLoading = false }
         
-        let workerURL = "https://seven-star-worker.henryyv0522.workers.dev/announcements?key=myriad-seven-star-2026"
+        let workerURL = "https://myriad-api.henryyv0522.workers.dev/announcements?key=myriad-seven-star-2026"
         
         do {
             guard let url = URL(string: workerURL) else { return }

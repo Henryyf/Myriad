@@ -365,32 +365,68 @@ struct TradingHomeView: View {
                 ? store.portfolio.totalCapital
                 : 100_000
 
+        // 1. 优先从云端拉取信号
+        let workerURL = "https://myriad-api.henryyv0522.workers.dev/signal/latest?key=myriad-seven-star-2026"
+        
         do {
-            let signal = try await strategy.computeSignal(totalCapital: capital)
+            guard let url = URL(string: workerURL) else {
+                throw URLError(.badURL)
+            }
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let signal = try JSONDecoder().decode(StrategySignal.self, from: data)
             latestSignal = signal
+            
+            // 保存到本地缓存（离线可用）
+            if let encoded = try? JSONEncoder().encode(signal) {
+                UserDefaults.standard.set(encoded, forKey: "cached_signal")
+            }
+            
             classified = store.classifyHoldings(signal: signal)
-
-            let adviceList = SevenStarStrategy.compareHoldings(
-                current: store.portfolio.holdings,
-                signal: signal,
-                totalCapital: capital
-            )
-            var map: [String: HoldingAction] = [:]
-            var buys: [String] = []
-            for advice in adviceList {
-                map[advice.stockName] = advice.action
-                if advice.action == .buy && !store.portfolio.holdings.contains(where: { $0.stockName == advice.stockName }) {
-                    buys.append(advice.stockName)
+            updateAdvices(signal: signal, capital: capital)
+        } catch {
+            print("从云端拉取信号失败: \(error), 尝试本地缓存或计算")
+            
+            // 2. Fallback: 尝试本地缓存
+            if let cached = UserDefaults.standard.data(forKey: "cached_signal"),
+               let signal = try? JSONDecoder().decode(StrategySignal.self, from: cached) {
+                print("使用本地缓存信号")
+                latestSignal = signal
+                classified = store.classifyHoldings(signal: signal)
+                updateAdvices(signal: signal, capital: capital)
+            } else {
+                // 3. Fallback: 本地计算（最后手段）
+                print("本地缓存也失败，执行本地计算")
+                do {
+                    let signal = try await strategy.computeSignal(totalCapital: capital)
+                    latestSignal = signal
+                    classified = store.classifyHoldings(signal: signal)
+                    updateAdvices(signal: signal, capital: capital)
+                } catch {
+                    signalError = "无法获取策略信号: \(error.localizedDescription)"
+                    classified = store.classifyHoldings(signal: nil)
                 }
             }
-            advices = map
-            buyAdviceNames = buys
-        } catch {
-            signalError = error.localizedDescription
-            classified = store.classifyHoldings(signal: nil)
         }
 
         isLoadingSignal = false
+    }
+    
+    private func updateAdvices(signal: StrategySignal, capital: Double) {
+        let adviceList = SevenStarStrategy.compareHoldings(
+            current: store.portfolio.holdings,
+            signal: signal,
+            totalCapital: capital
+        )
+        var map: [String: HoldingAction] = [:]
+        var buys: [String] = []
+        for advice in adviceList {
+            map[advice.stockName] = advice.action
+            if advice.action == .buy && !store.portfolio.holdings.contains(where: { $0.stockName == advice.stockName }) {
+                buys.append(advice.stockName)
+            }
+        }
+        advices = map
+        buyAdviceNames = buys
     }
     
     private func setupNotifications() async {
