@@ -101,12 +101,19 @@ final class TradingStore {
         return fmt.string(from: lastUpdated) == todayString
     }
 
+    /// 根据用户资产和策略配置，计算目标股数
+    func calculateTargetShares(currentPrice: Double) -> Int {
+        let strategyValue = portfolio.totalCapital * portfolio.strategyConfig.strategyPercent
+        let targetShares = Int(strategyValue / currentPrice / 100) * 100  // 取整到100股
+        return targetShares
+    }
+    
     /// 根据策略信号分类所有持仓（策略仓 vs 自选仓）
     func classifyHoldings(signal: StrategySignal?) -> [ClassifiedHolding] {
         guard let signal = signal else {
             // 无信号时全部归为自选仓
             return portfolio.holdings.map {
-                ClassifiedHolding(holding: $0, category: .freePlay, strategyShares: 0, freePlayShares: $0.shares, action: nil)
+                ClassifiedHolding(holding: $0, category: .freePlay, strategyShares: 0, freePlayShares: $0.shares, action: nil, suggestedReduceShares: nil)
             }
         }
 
@@ -118,25 +125,91 @@ final class TradingStore {
         }()
 
         var result: [ClassifiedHolding] = []
+        
+        // 第一遍：分类
         for holding in portfolio.holdings {
             if let target = targetMap[holding.stockName] {
+                // ✅ 根据用户资产计算目标股数
+                guard let currentPrice = target.currentPrice else {
+                    // 无价格信息 → 归为自选仓
+                    result.append(ClassifiedHolding(holding: holding, category: .freePlay, strategyShares: 0, freePlayShares: holding.shares, action: nil, suggestedReduceShares: nil))
+                    continue
+                }
+                let targetShares = calculateTargetShares(currentPrice: currentPrice)
+                
+                // ✅ 使用市值占比而非股数差异来判断（避免价格波动误导）
+                let currentMarketValue = Double(holding.shares) * (holding.currentPrice ?? currentPrice)
+                let targetValue = portfolio.totalCapital * portfolio.strategyConfig.strategyPercent
+                let currentRatio = currentMarketValue / portfolio.totalCapital
+                let targetRatio = portfolio.strategyConfig.strategyPercent
+                let ratioDiff = abs(currentRatio - targetRatio)
+                
                 // 匹配策略信号
-                let stratShares = min(holding.shares, target.targetShares)
-                let freeShares = max(0, holding.shares - target.targetShares)
+                let stratShares = min(holding.shares, targetShares)
+                let freeShares = max(0, holding.shares - targetShares)
                 let category: HoldingCategory = freeShares > 0 ? .mixed : .strategy
-                let diff = Double(target.targetShares - holding.shares) / max(Double(holding.shares), 1)
+                
+                // ✅ 判断标准：市值占比偏差 < 3% 视为符合
                 let action: HoldingAction = {
-                    if abs(diff) < 0.05 { return .match }
-                    return diff > 0 ? .add : .reduce
+                    if ratioDiff < 0.03 { 
+                        return .match  // 市值占比接近目标，无需操作
+                    }
+                    // 市值占比偏离 > 3%，检查是否需要调仓
+                    if currentMarketValue < targetValue {
+                        // 现金不足检查
+                        let neededCash = targetValue - currentMarketValue
+                        if portfolio.cashBalance < neededCash * 0.1 {  // 连10%都买不起
+                            return .match  // 现金不足，保持现状
+                        }
+                        return .add
+                    }
+                    return .reduce
                 }()
-                result.append(ClassifiedHolding(holding: holding, category: category, strategyShares: stratShares, freePlayShares: freeShares, action: action))
+                result.append(ClassifiedHolding(holding: holding, category: category, strategyShares: stratShares, freePlayShares: freeShares, action: action, suggestedReduceShares: nil))
             } else if defensiveNames.contains(holding.stockName) {
-                result.append(ClassifiedHolding(holding: holding, category: .strategy, strategyShares: holding.shares, freePlayShares: 0, action: .hold))
+                result.append(ClassifiedHolding(holding: holding, category: .strategy, strategyShares: holding.shares, freePlayShares: 0, action: .hold, suggestedReduceShares: nil))
             } else {
                 // 不在信号中 → 自选仓
-                result.append(ClassifiedHolding(holding: holding, category: .freePlay, strategyShares: 0, freePlayShares: holding.shares, action: nil))
+                result.append(ClassifiedHolding(holding: holding, category: .freePlay, strategyShares: 0, freePlayShares: holding.shares, action: nil, suggestedReduceShares: nil))
             }
         }
+        
+        // 第二遍：检查自选仓是否超出预算
+        let freePlayBudget = portfolio.totalCapital * portfolio.strategyConfig.freePlayPercent
+        var freePlayActualValue: Double = 0
+        
+        for item in result where item.category == .freePlay {
+            // 优先使用 OCR 扫描的市值，否则用成本计算
+            let marketValue = item.holding.displayMarketValue
+            freePlayActualValue += marketValue
+        }
+        
+        // 如果自选仓超出预算 > 5%，给出调仓建议
+        if freePlayActualValue > freePlayBudget * 1.05 {
+            let excess = freePlayActualValue - freePlayBudget
+            print("⚠️ 自选仓超出预算：实际 ¥\(freePlayActualValue)，预算 ¥\(freePlayBudget)，超出 ¥\(excess)")
+            
+            // 更新每只自选仓股票的 action
+            for i in 0..<result.count {
+                guard result[i].category == .freePlay else { continue }
+                let holding = result[i].holding
+                
+                // 计算这只股票应该减持的比例（按市值占比）
+                let holdingMarketValue = holding.displayMarketValue
+                let holdingRatio = holdingMarketValue / freePlayActualValue
+                let shouldReduceValue = excess * holdingRatio
+                
+                // 使用实时价格计算应减持股数
+                let currentPrice = holding.currentPrice ?? holding.costPrice
+                let shouldReduceShares = Int(shouldReduceValue / currentPrice / 100) * 100 // 取整到100股
+                
+                if shouldReduceShares > 0 {
+                    result[i].action = .adjust
+                    result[i].suggestedReduceShares = shouldReduceShares
+                }
+            }
+        }
+        
         return result
     }
 
@@ -172,9 +245,18 @@ final class TradingStore {
         // 检查目标中有的
         for target in targetHoldings {
             let name = target.etfName
+            guard let currentPrice = target.currentPrice else {
+                // 无价格信息，跳过
+                continue
+            }
+            
+            // ✅ 根据用户资产计算目标股数
+            let targetShares = calculateTargetShares(currentPrice: currentPrice)
+            let targetValue = Double(targetShares) * currentPrice
+            
             if let current = currentMap[name] {
                 // 都有，比较数量
-                let diff = Double(target.targetShares - current.shares) / max(Double(current.shares), 1)
+                let diff = Double(targetShares - current.shares) / max(Double(current.shares), 1)
                 let action: HoldingAction
                 let reason: String
                 if abs(diff) < 0.05 {
@@ -182,18 +264,18 @@ final class TradingStore {
                     reason = "持仓数量与目标接近"
                 } else if diff > 0 {
                     action = .add
-                    reason = "需加仓 \(target.targetShares - current.shares) 股"
+                    reason = "需加仓 \(targetShares - current.shares) 股"
                 } else {
                     action = .reduce
-                    reason = "需减仓 \(current.shares - target.targetShares) 股"
+                    reason = "需减仓 \(current.shares - targetShares) 股"
                 }
                 advices.append(HoldingAdvice(
                     stockName: name,
                     action: action,
                     currentShares: current.shares,
-                    targetShares: target.targetShares,
+                    targetShares: targetShares,
                     currentValue: current.totalCost,
-                    targetValue: target.targetValue,
+                    targetValue: targetValue,
                     reason: reason
                 ))
                 currentMap.removeValue(forKey: name)
@@ -203,9 +285,9 @@ final class TradingStore {
                     stockName: name,
                     action: .buy,
                     currentShares: 0,
-                    targetShares: target.targetShares,
+                    targetShares: targetShares,
                     currentValue: 0,
-                    targetValue: target.targetValue,
+                    targetValue: targetValue,
                     reason: "策略推荐买入"
                 ))
             }
@@ -233,7 +315,9 @@ final class TradingStore {
             Holding(
                 stockName: result.stockName,
                 shares: result.shares,
-                costPrice: result.costPrice
+                costPrice: result.costPrice,
+                currentPrice: result.currentPrice,
+                marketValue: result.marketValue
             )
         }
         if let assets = summary.totalAssets {
