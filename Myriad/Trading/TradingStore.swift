@@ -255,16 +255,30 @@ final class TradingStore {
             let targetValue = Double(targetShares) * currentPrice
             
             if let current = currentMap[name] {
-                // 都有，比较数量
-                let diff = Double(targetShares - current.shares) / max(Double(current.shares), 1)
+                // ✅ 使用市值占比而非股数差异来判断（与 classifyHoldings 保持一致）
+                let currentMarketValue = Double(current.shares) * (current.currentPrice ?? currentPrice)
+                let targetValueIdeal = portfolio.totalCapital * portfolio.strategyConfig.strategyPercent
+                let currentRatio = currentMarketValue / portfolio.totalCapital
+                let targetRatio = portfolio.strategyConfig.strategyPercent
+                let ratioDiff = abs(currentRatio - targetRatio)
+                
                 let action: HoldingAction
                 let reason: String
-                if abs(diff) < 0.05 {
+                
+                // ✅ 判断标准：市值占比偏差 < 3% 视为符合
+                if ratioDiff < 0.03 {
                     action = .match
-                    reason = "持仓数量与目标接近"
-                } else if diff > 0 {
-                    action = .add
-                    reason = "需加仓 \(targetShares - current.shares) 股"
+                    reason = "持仓比例符合目标（\(String(format: "%.1f", currentRatio*100))% vs \(String(format: "%.1f", targetRatio*100))%）"
+                } else if currentMarketValue < targetValueIdeal {
+                    // 现金不足检查
+                    let neededCash = targetValueIdeal - currentMarketValue
+                    if portfolio.cashBalance < neededCash * 0.1 {  // 连10%都买不起
+                        action = .match
+                        reason = "现金不足，保持当前持仓"
+                    } else {
+                        action = .add
+                        reason = "需加仓 \(targetShares - current.shares) 股"
+                    }
                 } else {
                     action = .reduce
                     reason = "需减仓 \(current.shares - targetShares) 股"
