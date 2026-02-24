@@ -11,6 +11,7 @@ struct AnnouncementsView: View {
 
     @State private var announcements: [Announcement] = []
     @State private var isLoading = false
+    @State private var readAnnouncementIds: Set<String> = []
 
     var body: some View {
         Group {
@@ -29,22 +30,29 @@ struct AnnouncementsView: View {
                     }
                     .padding(16)
                 }
+                .refreshable {
+                    await loadAnnouncements(forceRefresh: true)
+                }
             }
         }
         .navigationTitle("公告")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: String.self) { id in
-            if let item = announcements.first(where: { $0.id == id }) {
-                AnnouncementDetailView(announcement: item)
-            }
+        .navigationDestination(for: Announcement.self) { announcement in
+            AnnouncementDetailView(announcement: announcement)
+                .onAppear {
+                    markAsRead(announcement.id)
+                }
         }
         .task {
+            loadReadStatus()
             await loadAnnouncements()
         }
     }
 
     private func announcementCard(_ item: Announcement) -> some View {
-        NavigationLink(value: item.id) {
+        let isRead = readAnnouncementIds.contains(item.id)
+        
+        return NavigationLink(value: item) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     if item.isImportant {
@@ -74,14 +82,16 @@ struct AnnouncementsView: View {
             .padding(14)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .opacity(isRead ? 0.6 : 1.0)
         }
         .buttonStyle(.plain)
     }
 
-    private func loadAnnouncements() async {
-        // 1. 先尝试从本地缓存加载
-        if let cached = loadCachedAnnouncements() {
+    private func loadAnnouncements(forceRefresh: Bool = false) async {
+        // 1. 先尝试从本地缓存加载（除非强制刷新）
+        if !forceRefresh, let cached = loadCachedAnnouncements() {
             announcements = cached
+            print("📦 [Announcements] 从缓存加载: \(cached.count) 条公告")
         }
         
         // 2. 异步从 Worker 拉取最新公告
@@ -91,18 +101,33 @@ struct AnnouncementsView: View {
         let workerURL = "https://myriad-api.henryyv0522.workers.dev/announcements?key=myriad-seven-star-2026"
         
         do {
-            guard let url = URL(string: workerURL) else { return }
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONDecoder().decode(AnnouncementsResponse.self, from: data)
-            announcements = response.announcements
+            guard let url = URL(string: workerURL) else { 
+                print("❌ [Announcements] URL 无效")
+                return 
+            }
+            
+            print("🌐 [Announcements] 开始请求: \(workerURL)")
+            let (data, response) = try await URLSession.shared.data(from: url)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 [Announcements] HTTP 状态码: \(httpResponse.statusCode)")
+            }
+            
+            let decoded = try JSONDecoder().decode(AnnouncementsResponse.self, from: data)
+            announcements = decoded.announcements
+            print("✅ [Announcements] 成功解析: \(decoded.announcements.count) 条公告")
             
             // 3. 保存到本地缓存
-            saveCachedAnnouncements(response.announcements)
+            saveCachedAnnouncements(decoded.announcements)
+            
+            // 4. 通知首页更新未读数量
+            NotificationCenter.default.post(name: NSNotification.Name("AnnouncementReadStatusChanged"), object: nil)
         } catch {
-            print("加载公告失败: \(error)")
+            print("❌ [Announcements] 加载失败: \(error)")
             // Fallback 到默认公告
             if announcements.isEmpty {
                 announcements = defaultAnnouncements
+                print("⚠️ [Announcements] Fallback 到默认公告")
             }
         }
     }
@@ -123,6 +148,30 @@ struct AnnouncementsView: View {
         }
     }
     
+    // MARK: - 已读状态管理
+    
+    private func loadReadStatus() {
+        if let data = UserDefaults.standard.array(forKey: "read_announcement_ids") as? [String] {
+            readAnnouncementIds = Set(data)
+            print("📖 [Announcements] 加载已读状态: \(data.count) 条")
+        }
+    }
+    
+    private func markAsRead(_ id: String) {
+        guard !readAnnouncementIds.contains(id) else { return }
+        readAnnouncementIds.insert(id)
+        saveReadStatus()
+        print("✓ [Announcements] 标记已读: \(id)")
+        
+        // 通知首页更新未读数量
+        NotificationCenter.default.post(name: NSNotification.Name("AnnouncementReadStatusChanged"), object: nil)
+    }
+    
+    private func saveReadStatus() {
+        let array = Array(readAnnouncementIds)
+        UserDefaults.standard.set(array, forKey: "read_announcement_ids")
+    }
+    
     // 默认公告（网络失败时使用）
     private var defaultAnnouncements: [Announcement] {
         [
@@ -137,7 +186,7 @@ struct AnnouncementsView: View {
     }
 }
 
-struct Announcement: Identifiable, Codable {
+struct Announcement: Identifiable, Codable, Hashable {
     let id: String
     let title: String
     let date: String

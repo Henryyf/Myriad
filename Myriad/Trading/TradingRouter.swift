@@ -13,4 +13,5 @@ enum TradingRoute: Hashable {
     case snapshot(String)    // 某日快照，参数为日期字符串
     case scanImport         // OCR 扫描导入
     case settings           // 策略设置
+    case announcements      // 公告
 }

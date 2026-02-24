@@ -15,9 +15,18 @@ struct Holding: Identifiable, Codable, Hashable {
     var shares: Int             // 持仓股数
     var costPrice: Double       // 成本价
     var addedAt: Date = Date()  // 录入时间
+    
+    // OCR 扫描数据（可选）
+    var currentPrice: Double?   // 现价（来自 OCR 扫描）
+    var marketValue: Double?    // 市值（来自 OCR 扫描）
 
     /// 持仓成本 = 股数 × 成本价
     var totalCost: Double { Double(shares) * costPrice }
+    
+    /// 显示用市值（优先用 OCR 的 marketValue，否则用 totalCost）
+    var displayMarketValue: Double {
+        marketValue ?? totalCost
+    }
 }
 
 // MARK: - 每日快照
@@ -75,6 +84,7 @@ enum HoldingAction: String, Codable, CaseIterable {
     case add = "加仓"         // 橙色
     case reduce = "减仓"      // 蓝色
     case match = "符合"       // 绿色
+    case adjust = "调仓"      // 黄色（自选仓超出预算）
 
     var color: String {
         switch self {
@@ -84,6 +94,7 @@ enum HoldingAction: String, Codable, CaseIterable {
         case .add: return "orange"
         case .reduce: return "blue"
         case .match: return "green"
+        case .adjust: return "yellow"
         }
     }
 }
@@ -115,7 +126,8 @@ struct ClassifiedHolding: Identifiable {
     var category: HoldingCategory
     var strategyShares: Int     // 属于策略仓的股数
     var freePlayShares: Int     // 属于自选仓的股数
-    var action: HoldingAction?  // 策略仓的操作建议
+    var action: HoldingAction?  // 操作建议
+    var suggestedReduceShares: Int? // 调仓建议：应减持股数（仅 action = .adjust 时使用）
 }
 
 // MARK: - 投资组合
@@ -143,7 +155,6 @@ struct StrategySignal: Codable {
     var status: String  // "signal" or "defensive"
     var targetHoldings: [SignalHolding]
     var defensiveEtf: String?
-    var totalValue: Double
     var generatedAt: String?
     var message: String?
 
@@ -151,7 +162,6 @@ struct StrategySignal: Codable {
         case date, status, message
         case targetHoldings = "target_holdings"
         case defensiveEtf = "defensive_etf"
-        case totalValue = "total_value"
         case generatedAt = "generated_at"
     }
 }
@@ -161,15 +171,11 @@ struct SignalHolding: Codable {
     var etfName: String
     var score: Double?
     var currentPrice: Double?
-    var targetValue: Double
-    var targetShares: Int
 
     enum CodingKeys: String, CodingKey {
         case etf, score
         case etfName = "etf_name"
         case currentPrice = "current_price"
-        case targetValue = "target_value"
-        case targetShares = "target_shares"
     }
 }
 

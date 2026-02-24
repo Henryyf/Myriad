@@ -162,47 +162,7 @@ final class TravelStore {
     private func seedMockIfNeeded() {
         guard trips.isEmpty else { return }
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy.MM.dd"
-        dateFormatter.timeZone = TimeZone.current
-        
-        // 1. 新疆，中国，2025.12.27-2025.12.28
-        let xinjiangStart = dateFormatter.date(from: "2025.12.27") ?? Date()
-        let xinjiangEnd = dateFormatter.date(from: "2025.12.28") ?? Date()
-        
-        // 2. 南京，中国，2026.1.10-1.11
-        let nanjingStart = dateFormatter.date(from: "2026.01.10") ?? Date()
-        let nanjingEnd = dateFormatter.date(from: "2026.01.11") ?? Date()
-        
-        // 3. 大连，中国，2025.8.2-8.5
-        let dalianStart = dateFormatter.date(from: "2025.08.02") ?? Date()
-        let dalianEnd = dateFormatter.date(from: "2025.08.05") ?? Date()
-
-        trips = [
-            Trip(
-                title: "新疆",
-                startDate: xinjiangStart,
-                endDate: xinjiangEnd,
-                countryCode: "CN",
-                heroImageData: nil,
-                memories: [MemoryItem(text: "和henry去了新疆玩，冻死老娘了，坐车好冷，但是和他在一起超开心。")]
-            ),
-            Trip(
-                title: "南京",
-                startDate: nanjingStart,
-                endDate: nanjingEnd,
-                countryCode: "CN",
-                heroImageData: nil,
-                memories: [MemoryItem(text: "2026年的第一次出去玩，南京大屠杀死难者纪念馆让我了解到了很多历史上发生的事情，珍惜现在的和平。")]
-            ),
-            Trip(
-                title: "大连",
-                startDate: dalianStart,
-                endDate: dalianEnd,
-                countryCode: "CN",
-                heroImageData: nil,
-                memories: [MemoryItem(text: "和henry开始的地方")]
-            )
-        ]
+        // 预设数据已移除，从空开始
+        trips = []
     }
 }

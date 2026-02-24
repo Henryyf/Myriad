@@ -35,7 +35,7 @@ class NotificationManager {
         }
     }
     
-    // 注册每日 14:00 信号提醒
+    // 注册每日信号提醒（北京时间 14:00）
     func scheduleDailySignalReminder() async {
         // 先确保有权限
         guard isAuthorized else {
@@ -55,15 +55,19 @@ class NotificationManager {
         content.sound = .default
         content.badge = 1
         
-        // 设置每天 14:00 触发
-        var dateComponents = DateComponents()
-        dateComponents.hour = 14
-        dateComponents.minute = 0
+        // 设置每天北京时间 14:00 触发
+        var beijingComponents = DateComponents()
+        beijingComponents.calendar = Calendar(identifier: .gregorian)
+        beijingComponents.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        beijingComponents.hour = 14
+        beijingComponents.minute = 0
         
         let trigger = UNCalendarNotificationTrigger(
-            dateMatching: dateComponents,
+            dateMatching: beijingComponents,
             repeats: true
         )
+        
+        print("📍 通知设置为北京时间 14:00（不随设备时区变化）")
         
         let request = UNNotificationRequest(
             identifier: "daily-signal-reminder",

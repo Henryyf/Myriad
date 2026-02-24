@@ -68,6 +68,8 @@ struct ContentView: View {
                     ScanImportSheet(store: tradingStore)
                 case .settings:
                     TradingSettingsView(store: tradingStore)
+                case .announcements:
+                    AnnouncementsView()
                 default:
                     EmptyView()
                 }
@@ -87,6 +89,7 @@ struct ContentView: View {
                 }
             }
         }
+        .preferredColorScheme(.light)
     }
 }
 

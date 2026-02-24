@@ -7,19 +7,22 @@
 
 import SwiftUI
 import PhotosUI
+import UserNotifications
 
 struct TradingHomeView: View {
 
-    var store: TradingStore
+    @Bindable var store: TradingStore
     @State private var showingScanSheet = false
     @State private var latestSignal: StrategySignal?
     @State private var classified: [ClassifiedHolding] = []
     @State private var advices: [String: HoldingAction] = [:]
     @State private var buyAdviceNames: [String] = []
+    @State private var fullAdvices: [HoldingAdvice] = []  // 保留完整的建议信息
     @State private var signalError: String?
     @State private var isLoadingSignal = false
     @State private var strategy = SevenStarStrategy()
     @State private var notificationManager = NotificationManager()
+    @State private var unreadAnnouncementCount = 0
 
     var body: some View {
         ScrollView {
@@ -37,8 +40,17 @@ struct TradingHomeView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     NavigationLink(value: TradingRoute.announcements) {
-                        Image(systemName: "envelope")
-                            .font(.system(size: 15, weight: .medium))
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "envelope")
+                                .font(.system(size: 15, weight: .medium))
+                            
+                            if unreadAnnouncementCount > 0 {
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
                     }
                     NavigationLink(value: TradingRoute.settings) {
                         Image(systemName: "gearshape")
@@ -50,12 +62,27 @@ struct TradingHomeView: View {
         .safeAreaInset(edge: .bottom) {
             scanButton
         }
-        .sheet(isPresented: $showingScanSheet) {
+        .sheet(isPresented: $showingScanSheet, onDismiss: {
+            // OCR 导入后刷新所有数据
+            Task { @MainActor in
+                await fetchSignal()
+            }
+        }) {
             ScanImportSheet(store: store)
         }
         .task {
             await fetchSignal()
             await setupNotifications()
+            updateUnreadCount()
+            
+            // 清除 App badge
+            await clearAppBadge()
+        }
+        .onAppear {
+            updateUnreadCount()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AnnouncementReadStatusChanged"))) { _ in
+            updateUnreadCount()
         }
     }
 
@@ -73,28 +100,41 @@ struct TradingHomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             } else if let signal = latestSignal {
+                let actions = allActions // 提前计算，避免重复
+                
                 // 顶部：日期 + 状态
                 HStack {
                     Text(formatSignalDate(signal.date))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(signal.status == "signal" ? "调仓" : "防御")
+                    
+                    // 判断显示哪种标签
+                    let statusLabel: (text: String, color: Color) = {
+                        // 1. 信号过期（开盘时段）
+                        if isMarketOpenAndSignalStale(signalDate: signal.date) {
+                            return ("今日信号未发布", .yellow)
+                        }
+                        // 2. 无需操作（持仓完全符合）
+                        if actions.isEmpty {
+                            return ("持仓符合", .green)
+                        }
+                        // 3. 需要调仓 / 防御
+                        return (signal.status == "signal" ? "调仓" : "防御",
+                                signal.status == "signal" ? .red : .blue)
+                    }()
+                    
+                    Text(statusLabel.text)
                         .font(.caption.bold())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(signal.status == "signal"
-                                ? Color.red.opacity(0.12)
-                                : Color.blue.opacity(0.12))
-                        )
-                        .foregroundStyle(signal.status == "signal" ? .red : .blue)
+                        .background(Capsule().fill(statusLabel.color.opacity(0.12)))
+                        .foregroundStyle(statusLabel.color)
                 }
 
                 // 操作列表（买入、卖出、加仓、减仓、持有不变）
-                let actions = allActions
                 if actions.isEmpty {
-                    Text("今日无需操作，继续持有")
+                    Text("无需操作，继续持有当前仓位")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -269,7 +309,11 @@ struct TradingHomeView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, strategyHoldings.isEmpty ? 0 : 4)
                     ForEach(freePlayHoldings) { ch in
-                        HoldingRow(holding: ch.holding, action: nil)
+                        HoldingRow(
+                            holding: ch.holding,
+                            action: ch.action,
+                            suggestedReduceShares: ch.suggestedReduceShares
+                        )
                     }
                 }
             }
@@ -327,26 +371,41 @@ struct TradingHomeView: View {
     private var allActions: [ActionItem] {
         var items: [ActionItem] = []
 
-        // 当前持仓的建议（卖出、加仓、减仓，跳过买入——由下面统一处理）
-        for (name, action) in advices {
-            if action == .match || action == .hold || action == .buy { continue }
-            items.append(ActionItem(name: name, action: action, detail: nil))
-        }
+        // 找出自选仓持仓（不应该显示卖出建议）
+        let freePlayStockNames = Set(classified.filter { $0.category == .freePlay }.map { $0.holding.stockName })
 
-        // 未持有的买入建议（唯一的买入入口）
-        for name in buyAdviceNames {
-            if store.portfolio.totalCapital > 0,
-               let signal = latestSignal,
-               let target = signal.targetHoldings.first(where: { $0.etfName == name }),
-               target.targetShares > 0 {
-                items.append(ActionItem(
-                    name: name,
-                    action: .buy,
-                    detail: "约 \(target.targetShares) 股 · ¥\(formatCurrency(target.targetValue))"
-                ))
-            } else {
-                items.append(ActionItem(name: name, action: .buy, detail: "扫描持仓后显示具体金额"))
+        // 使用 fullAdvices 而不是 advices 和 signal.targetHoldings
+        for advice in fullAdvices {
+            let action = advice.action
+            
+            // 跳过 match 和 hold（无需操作）
+            if action == .match || action == .hold {
+                continue
             }
+            
+            // ⚠️ 跳过自选仓的卖出建议（自选仓由用户自己管理）
+            if action == .sell && freePlayStockNames.contains(advice.stockName) {
+                continue
+            }
+            
+            // 构建详情文本
+            var detail: String?
+            switch action {
+            case .buy:
+                detail = "约 \(advice.targetShares) 股 · ¥\(formatCurrency(advice.targetValue))"
+            case .add:
+                let diff = advice.targetShares - advice.currentShares
+                detail = "加仓 \(diff) 股至 \(advice.targetShares) 股"
+            case .reduce:
+                let diff = advice.currentShares - advice.targetShares
+                detail = "减仓 \(diff) 股至 \(advice.targetShares) 股"
+            case .sell:
+                detail = "全部卖出 \(advice.currentShares) 股"
+            default:
+                detail = nil
+            }
+            
+            items.append(ActionItem(name: advice.stockName, action: action, detail: detail))
         }
 
         return items
@@ -358,11 +417,16 @@ struct TradingHomeView: View {
         isLoadingSignal = true
         signalError = nil
 
-        let capital = store.portfolio.strategyBudget > 0
-            ? store.portfolio.strategyBudget
-            : store.portfolio.totalCapital > 0
-                ? store.portfolio.totalCapital
-                : 100_000
+        // 计算策略仓金额（默认 10 万，只有明确数据时才覆盖）
+        let capital: Double = {
+            let total = store.portfolio.totalCapital
+            let pct = store.portfolio.strategyConfig.strategyPercent
+            // 只有当总资产 >= 10000 且策略比例合理时，才用实际计算值
+            if total >= 10_000 && pct > 0.1 && pct <= 1.0 {
+                return total * pct
+            }
+            return 100_000  // 默认 10 万人民币
+        }()
 
         // 1. 优先从云端拉取信号
         let workerURL = "https://myriad-api.henryyv0522.workers.dev/signal/latest?key=myriad-seven-star-2026"
@@ -381,7 +445,7 @@ struct TradingHomeView: View {
             }
             
             classified = store.classifyHoldings(signal: signal)
-            updateAdvices(signal: signal, capital: capital)
+            updateAdvices(signal: signal)
         } catch {
             print("从云端拉取信号失败: \(error), 尝试本地缓存或计算")
             
@@ -391,7 +455,7 @@ struct TradingHomeView: View {
                 print("使用本地缓存信号")
                 latestSignal = signal
                 classified = store.classifyHoldings(signal: signal)
-                updateAdvices(signal: signal, capital: capital)
+                updateAdvices(signal: signal)
             } else {
                 // 3. Fallback: 本地计算（最后手段）
                 print("本地缓存也失败，执行本地计算")
@@ -399,7 +463,7 @@ struct TradingHomeView: View {
                     let signal = try await strategy.computeSignal(totalCapital: capital)
                     latestSignal = signal
                     classified = store.classifyHoldings(signal: signal)
-                    updateAdvices(signal: signal, capital: capital)
+                    updateAdvices(signal: signal)
                 } catch {
                     signalError = "无法获取策略信号: \(error.localizedDescription)"
                     classified = store.classifyHoldings(signal: nil)
@@ -410,12 +474,14 @@ struct TradingHomeView: View {
         isLoadingSignal = false
     }
     
-    private func updateAdvices(signal: StrategySignal, capital: Double) {
-        let adviceList = SevenStarStrategy.compareHoldings(
-            current: store.portfolio.holdings,
-            signal: signal,
-            totalCapital: capital
-        )
+    private func updateAdvices(signal: StrategySignal) {
+        // ✅ 使用 TradingStore.compareWithSignal（与 classifyHoldings 共享市值占比判断逻辑）
+        // 之前调用 SevenStarStrategy.compareHoldings 使用了不同的容差算法，导致顶部卡片与底部列表不一致
+        let adviceList = store.compareWithSignal(signal)
+        
+        // 保存完整建议列表
+        fullAdvices = adviceList
+        
         var map: [String: HoldingAction] = [:]
         var buys: [String] = []
         for advice in adviceList {
@@ -438,8 +504,61 @@ struct TradingHomeView: View {
         // 注册每日 14:00 信号提醒
         await notificationManager.scheduleDailySignalReminder()
     }
+    
+    private func clearAppBadge() async {
+        // 清除 App 图标的 badge 数字
+        do {
+            try await UNUserNotificationCenter.current().setBadgeCount(0)
+            print("🔔 App badge 已清除")
+        } catch {
+            print("⚠️ 清除 badge 失败: \(error)")
+        }
+    }
 
     // MARK: - Helpers
+    
+    /// 判断是否在市场开盘时间且信号过期（北京时间 9:30-13:30）
+    private func isMarketOpenAndSignalStale(signalDate: String) -> Bool {
+        // 获取北京时间
+        let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = beijingTimeZone
+        
+        let now = Date()
+        let beijingComponents = calendar.dateComponents([.hour, .minute, .weekday], from: now)
+        
+        guard let hour = beijingComponents.hour,
+              let minute = beijingComponents.minute,
+              let weekday = beijingComponents.weekday else {
+            return false
+        }
+        
+        // 检查是否为工作日（周一=2，周五=6）
+        let isWeekday = (2...6).contains(weekday)
+        guard isWeekday else { return false }
+        
+        // 检查是否在开盘时间（9:30-13:30）
+        let isMarketOpen = (hour == 9 && minute >= 30) ||
+                          (hour > 9 && hour < 13) ||
+                          (hour == 13 && minute < 30)
+        
+        guard isMarketOpen else { return false }
+        
+        // 检查信号日期是否不是今天
+        let todayString = todayDateString()
+        let isStale = signalDate != todayString
+        
+        return isStale
+    }
+    
+    /// 获取今天的日期字符串（yyyyMMdd 格式，北京时间）
+    private func todayDateString() -> String {
+        let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.timeZone = beijingTimeZone
+        return formatter.string(from: Date())
+    }
 
     private func formatSignalDate(_ dateStr: String) -> String {
         // "20260219" → "2026/02/19"
@@ -456,6 +575,24 @@ struct TradingHomeView: View {
         fmt.minimumFractionDigits = 2
         fmt.maximumFractionDigits = 2
         return fmt.string(from: NSNumber(value: value)) ?? "0.00"
+    }
+    
+    // MARK: - 未读公告统计
+    
+    private func updateUnreadCount() {
+        // 1. 获取所有公告
+        guard let cachedData = UserDefaults.standard.data(forKey: "cached_announcements"),
+              let allAnnouncements = try? JSONDecoder().decode([Announcement].self, from: cachedData) else {
+            unreadAnnouncementCount = 0
+            return
+        }
+        
+        // 2. 获取已读列表
+        let readIds = Set(UserDefaults.standard.array(forKey: "read_announcement_ids") as? [String] ?? [])
+        
+        // 3. 计算未读数量
+        unreadAnnouncementCount = allAnnouncements.filter { !readIds.contains($0.id) }.count
+        print("📬 [TradingHome] 未读公告: \(unreadAnnouncementCount)")
     }
 }
 
@@ -479,6 +616,7 @@ extension HoldingAction {
         case .add: return .orange
         case .reduce: return .blue
         case .match: return .secondary
+        case .adjust: return .yellow
         }
     }
 }
@@ -487,9 +625,10 @@ extension HoldingAction {
 
 struct HoldingActionTag: View {
     let action: HoldingAction
+    var customText: String? = nil // 自定义显示文本（如"调仓 -100股"）
 
     var body: some View {
-        Text(action.rawValue)
+        Text(customText ?? action.rawValue)
             .font(.caption.weight(.bold))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -508,6 +647,7 @@ struct HoldingRow: View {
     var badge: String? = nil
     var strategyShares: Int? = nil
     var freePlayShares: Int? = nil
+    var suggestedReduceShares: Int? = nil // 调仓建议：应减持股数
 
     var body: some View {
         HStack(spacing: 12) {
@@ -540,16 +680,34 @@ struct HoldingRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("¥\(String(format: "%.3f", holding.costPrice))")
-                    .font(.subheadline.monospacedDigit())
-                Text("¥\(String(format: "%.0f", holding.totalCost))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 6) {
+                // 成本价
+                HStack(spacing: 3) {
+                    Text("成本")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("¥\(String(format: "%.3f", holding.costPrice))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                
+                // 市值（优先用 OCR 扫描的值）
+                HStack(spacing: 3) {
+                    Text("市值")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("¥\(String(format: "%.0f", holding.displayMarketValue))")
+                        .font(.subheadline.bold().monospacedDigit())
+                        .foregroundStyle(.primary)
+                }
             }
 
             if let action {
-                HoldingActionTag(action: action)
+                if action == .adjust, let reduceShares = suggestedReduceShares {
+                    HoldingActionTag(action: action, customText: "调仓 -\(reduceShares)股")
+                } else {
+                    HoldingActionTag(action: action)
+                }
             }
         }
         .padding(12)

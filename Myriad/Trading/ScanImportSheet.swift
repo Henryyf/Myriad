@@ -10,7 +10,7 @@ import PhotosUI
 
 struct ScanImportSheet: View {
 
-    var store: TradingStore
+    @Bindable var store: TradingStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedItem: PhotosPickerItem?

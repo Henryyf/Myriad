@@ -10,7 +10,6 @@ import MapKit
 
 struct TravelMapView: View {
 
-    @Environment(\.colorScheme) private var colorScheme
     var store: TravelStore
 
     @State private var selectedCountry: CountryFootprint?

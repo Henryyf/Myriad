@@ -9,17 +9,14 @@ import SwiftUI
 
 struct TradingSettingsView: View {
 
-    var store: TradingStore
+    @Bindable var store: TradingStore
 
     @State private var strategyPercent: Double = 0.8
     @State private var freePlayPercent: Double = 0.0
     @State private var cashPercent: Double = 0.2
 
-    @State private var workerURL: String = ""
-    @State private var apiKey: String = ""
-
-    @State private var isCheckingHealth = false
-    @State private var healthStatus: Bool?
+    @State private var isTesting = false
+    @State private var testResult: String?
 
     init(store: TradingStore) {
         self.store = store
@@ -27,8 +24,6 @@ struct TradingSettingsView: View {
         _strategyPercent = State(initialValue: config.strategyPercent)
         _freePlayPercent = State(initialValue: config.freePlayPercent)
         _cashPercent = State(initialValue: config.cashPercent)
-        _workerURL = State(initialValue: UserDefaults.standard.string(forKey: "trading_worker_url") ?? TradingSignalService.defaultBaseURL)
-        _apiKey = State(initialValue: UserDefaults.standard.string(forKey: "trading_api_key") ?? TradingSignalService.defaultAPIKey)
     }
 
     var body: some View {
@@ -36,7 +31,8 @@ struct TradingSettingsView: View {
             VStack(spacing: 24) {
                 allocationSection
                 totalCapitalSection
-                serverSection
+                dataSourceSection
+                strategyInfoSection
             }
             .padding()
         }
@@ -51,41 +47,36 @@ struct TradingSettingsView: View {
             Label("仓位分配", systemImage: "chart.pie.fill")
                 .font(.headline)
 
-            // 可视化饼图条
             allocationBar
 
-            // 策略仓滑块
             sliderRow(
-                title: "📊 策略仓",
+                title: "策略仓",
                 subtitle: "跟随七星高照策略",
                 value: $strategyPercent,
                 color: .blue
             )
 
-            // 自选仓滑块
             sliderRow(
-                title: "🎮 自选仓",
+                title: "自选仓",
                 subtitle: "你自己选的股票",
                 value: $freePlayPercent,
                 color: .purple
             )
 
-            // 现金仓（自动计算）
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("💵 现金仓")
+                    Text("现金仓")
                         .font(.subheadline.bold())
                     Text("自动计算 = 100% - 策略 - 自选")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(Int(cashPercent * 100))%")
+                Text("\(100 - Int(round(strategyPercent * 100)) - Int(round(freePlayPercent * 100)))%")
                     .font(.title3.bold().monospacedDigit())
                     .foregroundStyle(.gray)
             }
 
-            // 警告提示
             if strategyPercent < StrategyConfig.minStrategyPercent {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -159,7 +150,6 @@ struct TradingSettingsView: View {
         }
     }
 
-    /// 滑块联动：调一个，现金自动调整；如果超出则截断
     private func balanceSliders(changed: String) {
         let total = strategyPercent + freePlayPercent
         if total > 1.0 {
@@ -173,12 +163,20 @@ struct TradingSettingsView: View {
     }
 
     private func saveAllocation() {
+        // 四舍五入到 5% 步长，确保总和 = 1.0
+        let s = (strategyPercent * 20).rounded() / 20  // round to nearest 0.05
+        let f = (freePlayPercent * 20).rounded() / 20
+        let c = max(0, 1.0 - s - f)
         let config = StrategyConfig(
-            strategyPercent: strategyPercent,
-            freePlayPercent: freePlayPercent,
-            cashPercent: cashPercent
+            strategyPercent: s,
+            freePlayPercent: f,
+            cashPercent: c
         )
         store.updateStrategyConfig(config)
+        // 同步回 UI
+        strategyPercent = s
+        freePlayPercent = f
+        cashPercent = c
     }
 
     // MARK: - 总资金设置
@@ -205,66 +203,99 @@ struct TradingSettingsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    // MARK: - 服务器配置
+    // MARK: - 数据源
 
-    private var serverSection: some View {
+    private var dataSourceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("信号服务器", systemImage: "server.rack")
+            Label("数据源", systemImage: "antenna.radiowaves.left.and.right")
                 .font(.headline)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Worker URL")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                TextField("https://...", text: $workerURL)
-                    .font(.caption.monospaced())
-                    .textFieldStyle(.roundedBorder)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("API Key")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                SecureField("API Key", text: $apiKey)
-                    .font(.caption.monospaced())
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack(spacing: 12) {
-                Button {
-                    saveServerConfig()
-                } label: {
-                    Text("保存")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.blue)
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tushare Pro")
+                        .font(.subheadline.bold())
+                    Text("ETF 日线数据，本地计算策略信号")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
 
-                Button {
-                    Task { await checkHealth() }
-                } label: {
-                    HStack(spacing: 4) {
-                        if isCheckingHealth {
-                            ProgressView()
-                                .controlSize(.mini)
-                        }
-                        Text("测试连接")
-                            .font(.caption.bold())
+            Button {
+                Task { await testDataSource() }
+            } label: {
+                HStack(spacing: 6) {
+                    if isTesting {
+                        ProgressView().controlSize(.mini)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.gray.opacity(0.2))
-                    .clipShape(Capsule())
+                    Text("测试数据连接")
+                        .font(.caption.bold())
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.gray.opacity(0.2))
+                .clipShape(Capsule())
+            }
 
-                if let status = healthStatus {
-                    Image(systemName: status ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(status ? .green : .red)
+            if let result = testResult {
+                Text(result)
+                    .font(.caption)
+                    .foregroundStyle(result.contains("✅") ? .green : .red)
+            }
+        }
+        .padding(16)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func testDataSource() async {
+        isTesting = true
+        testResult = nil
+        do {
+            let bars = try await TushareService.fetchETFDaily(
+                tsCode: "518880.SH",
+                startDate: "20260101",
+                endDate: "20261231"
+            )
+            testResult = "✅ 连接成功，获取到 \(bars.count) 条黄金ETF日线数据"
+        } catch {
+            testResult = "❌ \(error.localizedDescription)"
+        }
+        isTesting = false
+    }
+
+    // MARK: - 策略信息
+
+    private var strategyInfoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("七星高照策略", systemImage: "star.fill")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                infoRow("ETF 池", "\(SevenStarConfig.etfPool.count) 只")
+                infoRow("持仓数量", "\(SevenStarConfig.holdingsNum) 只")
+                infoRow("动量周期", "\(SevenStarConfig.lookbackDays) 天")
+                infoRow("止损线", "\(Int((1 - SevenStarConfig.stopLossRatio) * 100))%")
+                infoRow("RSI 周期", "\(SevenStarConfig.rsiPeriod)")
+                infoRow("防御品种", SevenStarConfig.defensiveETF.name)
+            }
+
+            Divider()
+
+            Text("ETF 池")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            ForEach(SevenStarConfig.etfPool, id: \.code) { etf in
+                HStack {
+                    Text(etf.name)
+                        .font(.caption)
+                    Spacer()
+                    Text(etf.code)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -273,16 +304,15 @@ struct TradingSettingsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private func saveServerConfig() {
-        UserDefaults.standard.set(workerURL, forKey: "trading_worker_url")
-        UserDefaults.standard.set(apiKey, forKey: "trading_api_key")
-    }
-
-    private func checkHealth() async {
-        isCheckingHealth = true
-        healthStatus = nil
-        healthStatus = await TradingSignalService.healthCheck(baseURL: workerURL)
-        isCheckingHealth = false
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.caption.bold())
+        }
     }
 
     private func formatNumber(_ value: Double) -> String {
