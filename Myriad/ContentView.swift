@@ -70,6 +70,15 @@ struct ContentView: View {
                     TradingSettingsView(store: tradingStore)
                 case .announcements:
                     AnnouncementsView()
+                case .holdingDetail(let id):
+                    if let holding = tradingStore.portfolio.holdings.first(where: { $0.id == id }) {
+                        HoldingDetailView(
+                            holding: holding,
+                            classified: nil
+                        )
+                    } else {
+                        EmptyView()
+                    }
                 default:
                     EmptyView()
                 }
